@@ -11,7 +11,7 @@ from functools import partial
 from typing import (AbstractSet, Any, Collection, Dict, Generic, Iterator,
                     List, Optional, Sequence, Type, TypeVar, Union, cast)
 
-from typing_inspect import get_args, get_origin
+from typing_inspect import get_args, get_origin, is_optional_type
 
 from .exception import ModelNotLoadedException
 
@@ -27,21 +27,15 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="Model")
 
 _DB_TRANSIENT = "_db_transient"
-_DB_EAGER = "_db_transient"
 
 
 def _is_transient(field: Field):
     return field.metadata.get(_DB_TRANSIENT, False)
 
 
-def _is_eager(field: Field):
-    return field.metadata.get(_DB_EAGER, False)
-
-
-def field(transient: bool = False, eager: bool = False, **kwargs) -> Any:
+def field(transient: bool = False, **kwargs) -> Any:
     metadata = kwargs.pop("metadata", {})
     metadata[_DB_TRANSIENT] = transient
-    metadata[_DB_EAGER] = eager
     return dc_field(metadata=metadata, **kwargs)
 
 
@@ -168,7 +162,7 @@ class LazyModelList(MutableSequence, LazyModelCollection[T]):
 
 
 async def get_model_ref(
-    id: Union[int, str], model_class: Type[T] = None, **kwargs
+    id: Union[int, str], model_class: Type[T] = None
 ) -> Optional[T]:
     if id is None:
         return None
@@ -181,12 +175,16 @@ def _serialize_collection(val):
     else:
         return [str(i.id) for i in val]
 
+async def _deserialize_collection(command, collection_type):
+    val = await command
+    return collection_type(map(json.loads, val))
+
 
 class ModelFieldType(Enum):
     DEFAULT = str, json.dumps, json.loads
     STRING = str, lambda x: x, lambda x: x
-    SET = set, lambda x: x, set
-    LIST = list, lambda x: x, list
+    SET = set, lambda x: x, lambda x: _deserialize_collection(model.redis.smembers(x), set)
+    LIST = list, lambda x: x, lambda x: _deserialize_collection(model.redis.lrange(x, 0, -1), list)
     MODEL = str, lambda x: str(x.id), get_model_ref
     MODEL_OPTIONAL = str, lambda x: str(x.id) if x is not None else None, get_model_ref
     MODEL_SET = set, _serialize_collection, LazyModelSet.create
@@ -263,7 +261,7 @@ def model_fields(model_class: Type) -> List[ModelField]:
             model_field_type = ModelFieldType.MODEL
         elif f.type == str:
             model_field_type = ModelFieldType.STRING
-        elif origin is Union and len(args) == 2 and args[1] == type(None):
+        elif is_optional_type(origin):
             field_type = args[0]
             if _is_model(field_type):
                 model_field_type = ModelFieldType.MODEL_OPTIONAL

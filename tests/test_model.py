@@ -5,7 +5,7 @@ from rom import model, Model
 class ForTesting(Model):
     f1: int
 
-class StoreTestCase(TestCase):
+class ModelTestCase(TestCase):
     async def setUp(self):
         self.mock_redis_transaction = MagicMock(spec=Redis)
         self.mock_redis_transaction.execute.side_effect = CoroutineMock(spec=Redis)
@@ -13,6 +13,9 @@ class StoreTestCase(TestCase):
         self.mock_redis_client.multi_exec.return_value = self.mock_redis_transaction
         self.mock_redis_client.smembers.side_effect = CoroutineMock()
         model.redis = self.mock_redis_client
+
+    async def tearDown(self):
+        model.redis = None
 
     async def test_save(self):
         await ForTesting(123, 123).save()
