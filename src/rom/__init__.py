@@ -1,4 +1,5 @@
-from .model import Model, init
-from .fields import field, LazyModelList, LazyModelSet
+from .fields import field
+from .model import Model
+from .session import connection
 
-__all__ = ["Model", "init", "field", "LazyModelList", "LazyModelSet"]
+__all__ = ["Model", "connection", "field"]

@@ -1,29 +1,24 @@
-import asyncio
+from contextlib import asynccontextmanager
 import logging
-from dataclasses import dataclass, field
-from typing import (Any, AsyncIterator, Dict, Iterable, List, Optional, Type,
+from dataclasses import dataclass, field, fields, replace
+from typing import (Any, AsyncGenerator, AsyncIterator, Collection, Dict, Type,
                     TypeVar, Union, cast)
 
-from aioredis.commands import Redis, create_redis_pool
-
 from .exception import ModelNotFoundException
-from .fields import ModelField, ModelFieldType, model_fields
+from .fields import (deserialize, is_optional, is_transient, serialize,
+                     update_field)
+from .session import connection, transaction
 
 _logger = logging.getLogger(__name__)
 
-lock = asyncio.Lock()
-redis: Optional[Redis] = None
-
-async def init(address, *args, **kwargs):
-    async with lock:
-        global redis
-        if redis is None:
-            redis = await create_redis_pool(f"{address}?encoding=utf-8", *args, **kwargs)
 
 class ModelDataclassType(type):
     def __new__(cls, name, bases, dict):
-        model_class = dataclass(super().__new__(cls, name, bases, dict))
-        setattr(model_class, "fields", model_fields(model_class))
+        for field_name, field_type in dict.get("__annotations__", {}).items():
+            update_field(field_name, field_type, dict)
+        model_class = dataclass(
+            super().__new__(cls, name, bases, dict), unsafe_hash=True
+        )
         setattr(
             model_class,
             "NotFoundException",
@@ -34,23 +29,9 @@ class ModelDataclassType(type):
 
 T = TypeVar("T", bound="Model")
 
+
 class Model(metaclass=ModelDataclassType):
     id: int = field(init=True, repr=False, compare=False)
-
-    @classmethod
-    async def from_dict(cls: Type[T], model: Dict[str, Any]) -> T:
-        fields: List[ModelField] = cls.fields  # type: ignore # pylint: disable=no-member
-        deserialized = {}
-        for field in fields:
-            value = await field.deserialize(model)
-            if value is not None:
-                deserialized[field.name] = value
-        return cls(**deserialized)
-
-    def to_dict(self) -> Dict[str, Any]:
-        fields: List[ModelField] = self.fields  # type: ignore # pylint: disable=no-member
-        # dict_model_class: Type = self.dict_model_class  # type: ignore # pylint: disable=no-member
-        return {field.name: field.serialize(self) for field in fields}
 
     @classmethod
     def prefix(cls) -> str:
@@ -58,85 +39,109 @@ class Model(metaclass=ModelDataclassType):
 
     @classmethod
     async def get(cls: Type[T], id: Union[int, str]) -> T:
-        db_item = cast(Dict[str, Any], await redis.hgetall(f"{cls.prefix()}:{id}"))
+        async with connection() as conn:
+            db_item = cast(Dict[str, Any], await conn.hgetall(f"{cls.prefix()}:{id}"))
+
         if not db_item:
             raise cls.NotFoundException(f"{id} not found")  # type: ignore # pylint: disable=no-member
-        return cast(T, await cls.from_dict(db_item))
+
+        model_dict = {}
+        for f in [f for f in fields(cls) if not is_transient(f)]:
+            value = db_item.get(f.name)
+            model_dict[f.name] = None if is_optional(f) and value is None else await deserialize(f, value)
+
+        return cls(**model_dict)
 
     @classmethod
     async def all(cls: Type[T]) -> AsyncIterator[T]:
-        for key in await redis.smembers(cls.prefix()):
-            value = cast(T, await cls.get(key))
-            if value:
-                yield value
-            else:
-                _logger.warning(f"{cls.__name__} Key: {key} orphaned")
+        async with connection() as conn:
+            for key in await conn.smembers(cls.prefix()):
+                value = cast(T, await cls.get(key))
+                if value:
+                    yield value
+                else:
+                    _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @staticmethod
     async def flush():
-        await redis.flushdb()
+        async with connection() as conn:
+            await conn.flushdb()
 
     @classmethod
     async def count(cls) -> int:
-        return await redis.scard(cls.prefix())
+        async with connection() as conn:
+            return await conn.scard(cls.prefix())
 
     @classmethod
     async def delete_all(cls: Type):
+        # TODO: not working :(
         key_prefix = cls.prefix()
-        with await cast(Redis, redis) as conn:
+        async with connection() as conn:
             keys = await conn.keys(f"{key_prefix}:*")
-            await conn.delete(*keys, key_prefix)
+            await conn.delete(key_prefix, *keys)
 
     @classmethod
     async def persisted(cls: Type, id: int) -> bool:
-        return await redis.exists(f"{cls.prefix()}:{id}")
+        async with connection() as conn:
+            return await conn.exists(f"{cls.prefix()}:{id}")
 
-    def _db_id(self) -> str:
+    @property
+    def db_id(self) -> str:
         return f"{self.prefix()}:{self.id}"
 
-    # TODO Support optimistic locking, WATCH?
-    async def save(self, cascade=False):
-        tr = redis.multi_exec()
-        model_dict = self.to_dict()
-        for field in self.fields:  # type: ignore # pylint: disable=no-member
-            value = getattr(self, field.name)
-            if field.transient or value is None:
-                del model_dict[field.name]
-                continue
+    async def save(self, optimistic=False):
+        async with self._serialized_model(optimistic) as model_dict:
+            if model_dict:
+                async with transaction() as tr:
+                    tr.hmset_dict(self.db_id, model_dict)
+                    tr.sadd(self.prefix(), self.id)
 
-            if field.model_type == [
-                ModelFieldType.MODEL,
-                ModelFieldType.MODEL_OPTIONAL,
+    async def update(self, optimistic=False, **changes: Dict[str, Any]):
+        async with self._serialized_model(optimistic, **changes) as model_dict:
+            if model_dict:
+                async with transaction() as tr:
+                    for key, value in model_dict.items():
+                        tr.hmset(self.db_id, key, value)
+                    return replace(self, **changes)
+            else:
+                raise TypeError
+
+    @asynccontextmanager
+    async def _serialized_model(
+        self, optimistic, **changes
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        async with connection() as conn:
+            if optimistic:
+                conn.watch(self.db_id)
+            model_dict = {}
+            for field in [
+                f
+                for f in fields(self)
+                if not is_transient(f)
+                and hasattr(self, f.name)
+                and (not changes or f.name in changes)
             ]:
-                if cascade:
-                    await value.update(cascade=True)
-            elif field.model_type in [
-                ModelFieldType.MODEL_LIST,
-                ModelFieldType.LIST,
-                ModelFieldType.MODEL_SET,
-                ModelFieldType.SET,
-            ]:
-                if cascade and isinstance(value, Iterable[T]):
-                    for v in filter(None, value):
-                        await v.update(cascade=True)
-                ref_key = f"{self.prefix()}:{self.id}:{field.name}"
-                tr.delete(ref_key)
-                if field.model_type in [ModelFieldType.MODEL_LIST, ModelFieldType.LIST]:
-                    tr.rpush(ref_key, *model_dict[field.name])
-                else:
-                    tr.sadd(ref_key, *model_dict[field.name])
-                model_dict[field.name] = ref_key
-        tr.hmset_dict(self._db_id(), model_dict)
-        tr.sadd(self.prefix(), self.id)
-        await tr.execute()
+                value = changes.get(field.name, getattr(self, field.name))
+                ref_key = f"{self.db_id}:{field.name}"
+                serialized = await serialize(field, ref_key, value)
+                if isinstance(serialized, (Collection, Model)) and not isinstance(
+                    serialized, str
+                ):
+                    model_dict[field.name] = ref_key
+                    await serialized.save(optimistic=optimistic)
+                elif serialized:
+                    model_dict[field.name] = serialized
+            yield model_dict
 
     async def delete(self):
-        key = self._db_id()
-        keys = await redis.keys(f"{key}:*")
-        await redis.delete(*keys, key)
+        key = self.db_id
+        async with connection() as conn:
+            keys = await conn.keys(f"{key}:*")
+            await conn.delete(*keys, key)
 
     async def exists(self) -> bool:
-        return await redis.exists(self._db_id())
+        async with connection() as conn:
+            return await conn.exists(self.db_id)
 
     async def refresh(self: T) -> T:
         refreshed = await type(self).get(self.id)
