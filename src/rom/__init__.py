@@ -1,5 +1,5 @@
 from .fields import field
 from .model import Model
-from .session import connection
+from .session import configure
 
-__all__ = ["Model", "connection", "field"]
+__all__ = ["Model", "configure", "field"]

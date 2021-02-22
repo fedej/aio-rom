@@ -102,3 +102,9 @@ class RedisIntegrationTestCase(TestCase):
             assert await redis.exists("bar:1")
             await self.bar.delete()
             assert not await redis.exists("bar:1")
+
+    async def test_delete_all(self):
+        await self.bar.save()
+        async with redis_pool() as redis:
+            await Bar.delete_all()
+            assert not await redis.keys("bar*")

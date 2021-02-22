@@ -74,7 +74,6 @@ class Model(metaclass=ModelDataclassType):
 
     @classmethod
     async def delete_all(cls: Type):
-        # TODO: not working :(
         key_prefix = cls.prefix()
         async with connection() as conn:
             keys = await conn.keys(f"{key_prefix}:*")
@@ -91,20 +90,16 @@ class Model(metaclass=ModelDataclassType):
 
     async def save(self, optimistic=False):
         async with self._serialized_model(optimistic) as model_dict:
-            if model_dict:
-                async with transaction() as tr:
-                    tr.hmset_dict(self.db_id, model_dict)
-                    tr.sadd(self.prefix(), self.id)
+            async with transaction() as tr:
+                tr.hmset_dict(self.db_id, model_dict)
+                tr.sadd(self.prefix(), self.id)
 
     async def update(self, optimistic=False, **changes: Dict[str, Any]):
         async with self._serialized_model(optimistic, **changes) as model_dict:
-            if model_dict:
-                async with transaction() as tr:
-                    for key, value in model_dict.items():
-                        tr.hmset(self.db_id, key, value)
-                    return replace(self, **changes)
-            else:
-                raise TypeError
+            async with transaction() as tr:
+                for key, value in model_dict.items():
+                    tr.hset(self.db_id, key, value)
+                return replace(self, **changes)
 
     @asynccontextmanager
     async def _serialized_model(
