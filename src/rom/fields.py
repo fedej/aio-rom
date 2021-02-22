@@ -1,290 +1,139 @@
 import json
-import logging
-from abc import abstractmethod
 from asyncio.coroutines import iscoroutine
-from collections.abc import MutableSequence, MutableSet
+from collections.abc import MutableSequence
 from dataclasses import Field
 from dataclasses import field as dc_field
-from dataclasses import fields, is_dataclass
-from enum import Enum
+from dataclasses import is_dataclass
+from enum import Enum, auto
 from functools import partial
-from typing import (AbstractSet, Any, Collection, Dict, Generic, Iterator,
-                    List, Optional, Sequence, Type, TypeVar, Union, cast)
+from types import MappingProxyType
+from typing import (TYPE_CHECKING, AbstractSet, Any, Dict, Optional, Type,
+                    TypeVar, Union, cast)
 
 from typing_inspect import get_args, get_origin, is_optional_type
 
-from .exception import ModelNotLoadedException
-
-_logger = logging.getLogger(__name__)
-
-from typing import TYPE_CHECKING
-
-from . import model
+from .attributes import RedisList, RedisModelList, RedisModelSet, RedisSet
 
 if TYPE_CHECKING:
     from .model import Model
 
 T = TypeVar("T", bound="Model")
 
-_DB_TRANSIENT = "_db_transient"
+
+class FieldMetadata(str, Enum):
+    TRANSIENT = auto()
+    EAGER = auto()
+    CASCADE = auto()
+    OPTIONAL = auto()
+    DESERIALIZER = auto()
+    SERIALIZER = auto()
 
 
-def _is_transient(field: Field):
-    return field.metadata.get(_DB_TRANSIENT, False)
+def is_transient(field: Field):
+    return field.metadata.get(FieldMetadata.TRANSIENT, False)
 
 
-def field(transient: bool = False, **kwargs) -> Any:
+def is_eager(field: Field):
+    return field.metadata.get(FieldMetadata.EAGER, False)
+
+
+def is_cascade(field: Field):
+    return field.metadata.get(FieldMetadata.CASCADE, False)
+
+
+def is_optional(field: Field):
+    return field.metadata.get(FieldMetadata.OPTIONAL, False)
+
+
+def is_model(model: Union[Type, object]):
+    return is_dataclass(model) and hasattr(model, "prefix")
+
+
+def field(
+    transient: bool = False, cascade: bool = False, eager: bool = False, **kwargs
+) -> Any:
     metadata = kwargs.pop("metadata", {})
-    metadata[_DB_TRANSIENT] = transient
+    metadata[FieldMetadata.TRANSIENT] = transient
+    metadata[FieldMetadata.CASCADE] = cascade
+    metadata[FieldMetadata.EAGER] = eager
     return dc_field(metadata=metadata, **kwargs)
 
 
-class LazyModelCollection(Collection[T], Generic[T]):
-    def __init__(self, keys: Sequence[Union[int, str]], model_class: Type) -> None:
-        self._cache = {}
-        self._model_class = model_class
-        self.keys = list(map(str, keys))
+async def deserialize_reference(model_class: Type[T]):
+    async def deserializer(
+        key: Union[int, str],
+    ) -> Optional[T]:
+        if key is None:
+            return None
+        return cast(T, await model_class.get(id))
 
-    @classmethod
-    def default_factory(cls, model_class: Type):
-        return partial(cls, [], model_class)
+    return deserializer
 
-    @classmethod
-    async def create(
-        cls,
-        id: Union[int, str],
-        model_class: Type = type(None),
-        eager_type: Type = None,
-    ):
-        keys = await cls.get_keys(id)
-        val = cls(keys, model_class)
-        if eager_type is not None:
-            # Load all
-            async for _ in val:
-                pass
-            return eager_type(val)
-        return val
 
-    @classmethod
-    @abstractmethod
-    async def get_keys(cls, id: Union[int, str]) -> Sequence[int]:
-        pass
+async def deserialize(field: Field, value):
+    val = field.metadata.get(FieldMetadata.DESERIALIZER)(value)
+    if iscoroutine(val):
+        val = await val
+    return val
 
-    def __iter__(self) -> Iterator[T]:
-        return filter(None, iter(self._cache.values()))
 
-    def __len__(self) -> int:
-        return len(self._cache)
+async def serialize(field: Field, key: str, value):
+    val = field.metadata.get(FieldMetadata.SERIALIZER)(key, value)
+    if iscoroutine(val):
+        val = await val
+    return val
 
-    def __contains__(self, x: T) -> bool:
-        return str(x.id) in self._cache.keys()
 
-    def _get_cached_item(self, key: str):
-        try:
-            return self._cache[key]
-        except KeyError:
-            raise ModelNotLoadedException(
-                f"{self._model_class.__name__} object with id {key} was not loaded"
+def update_field(name, field_type, fields: Dict[str, Field]):
+    field = fields.get(name, dc_field()) or dc_field()
+    origin = get_origin(field_type) or field_type
+    args = get_args(field_type)
+    metadata = dict(getattr(field, "metadata", {}))
+    eager = is_eager(field)
+    cascade = is_cascade(field)
+    optional = False
+    deserializer = json.loads
+    serializer = lambda _, value: json.dumps(value)
+    if isinstance(field_type, type) and issubclass(field_type, str):
+        deserializer = lambda x: x
+        serializer = lambda _, v: v
+    elif is_model(field_type):
+        deserializer = deserialize_reference(field_type)
+    elif is_optional_type(field_type):
+        optional = True
+        if is_model(args[0]):
+            deserializer = deserialize_reference(args[0])
+    elif issubclass(origin, AbstractSet):
+        optional = True
+        if is_model(args[0]):
+            deserializer = partial(
+                RedisModelSet.from_key,
+                model_class=args[0],
+                eager=eager,
+                cascade=cascade,
             )
-
-    async def _get_item(self, id: Union[str, int]) -> Optional[T]:
-        key = str(id)
-        value = self._cache.get(key)
-        if value is not None:
-            return value
-        value = cast(T, await self._model_class.get(key))
-        if value is not None:
-            self._cache[key] = value
-            return value
+            serializer = partial(RedisModelSet, model_class=args[0], cascade=cascade)
         else:
-            _logger.warning(f"{self._model_class.__name__}: {key} orphaned")
-        return None
-
-    def __aiter__(self):
-        self._iter = iter(self.keys)
-        return self
-
-    async def __anext__(self):
-        try:
-            return await self._get_item(next(self._iter))
-        except StopIteration:
-            raise StopAsyncIteration
-
-
-class LazyModelSet(MutableSet, LazyModelCollection[T]):
-    @classmethod
-    async def get_keys(cls, id: Union[int, str]) -> Sequence[int]:
-        return await model.redis.smembers(id)
-
-    def add(self, value: T) -> None:
-        key = str(value.id)
-        self.keys.append(key)
-        self._cache[key] = value
-
-    def discard(self, value: T) -> None:
-        key = str(value.id)
-        if value in self:
-            self.keys.remove(key)
-            del self._cache[key]
-
-
-class LazyModelList(MutableSequence, LazyModelCollection[T]):
-    @classmethod
-    async def get_keys(cls, id: Union[int, str]) -> Sequence[int]:
-        return await model.redis.lrange(id, 0, -1)
-
-    def insert(self, index: int, value: T) -> None:
-        key = str(value.id)
-        self._cache[key] = value
-        self.keys.insert(index, key)
-
-    def __getitem__(self, i: Union[int, slice]) -> Union[T, Sequence[T]]:
-        if isinstance(i, slice):
-            return [
-                self._get_cached_item(self.keys[index])
-                for index in range(*i.indices(len(self)))
-            ]
-        else:
-            return self._get_cached_item(self.keys[i])
-
-    def __setitem__(self, i: Union[int, slice], o: Union[T, Sequence[T]]) -> None:
-        if isinstance(i, slice) and isinstance(o, Sequence):
-            for obj_index, index in enumerate(range(*i.indices(len(self)))):
-                self.insert(index, o[obj_index])
-        elif not isinstance(i, slice) and not isinstance(o, Sequence):
-            self.insert(i, o)
-        else:
-            raise ValueError
-
-    def __delitem__(self, i: int) -> None:
-        key = self.keys.pop(i)
-        del self._cache[key]
-
-
-async def get_model_ref(
-    id: Union[int, str], model_class: Type[T] = None
-) -> Optional[T]:
-    if id is None:
-        return None
-    return cast(T, await model_class.get(id))
-
-
-def _serialize_collection(val):
-    if isinstance(val, (LazyModelList, LazyModelSet)):
-        return val.keys
-    else:
-        return [str(i.id) for i in val]
-
-async def _deserialize_collection(command, collection_type):
-    val = await command
-    return collection_type(map(json.loads, val))
-
-
-class ModelFieldType(Enum):
-    DEFAULT = str, json.dumps, json.loads
-    STRING = str, lambda x: x, lambda x: x
-    SET = set, lambda x: x, lambda x: _deserialize_collection(model.redis.smembers(x), set)
-    LIST = list, lambda x: x, lambda x: _deserialize_collection(model.redis.lrange(x, 0, -1), list)
-    MODEL = str, lambda x: str(x.id), get_model_ref
-    MODEL_OPTIONAL = str, lambda x: str(x.id) if x is not None else None, get_model_ref
-    MODEL_SET = set, _serialize_collection, LazyModelSet.create
-    MODEL_LIST = list, _serialize_collection, LazyModelList.create
-
-    def __new__(cls, *args, **kwds):
-        value = len(cls.__members__) + 1
-        obj = object.__new__(cls)
-        obj._value_ = value
-        return obj
-
-    def __init__(self, redis_type: Type, serializer, deserializer):
-        self.redis_type = redis_type
-        self.serializer = serializer
-        self.deserializer = deserializer
-
-
-class ModelField:
-    name: str
-    model_type: ModelFieldType
-    transient: bool
-    eager: bool
-
-    def __init__(self, name, type, model_type, transient, eager) -> None:
-        self.name = name
-        self.model_type = model_type
-        self._serializer = model_type.serializer
-        if model_type in [
-            ModelFieldType.MODEL_SET,
-            ModelFieldType.MODEL_LIST,
-            ModelFieldType.MODEL_OPTIONAL,
-            ModelFieldType.MODEL,
-        ]:
-            self._deserializer = partial(
-                model_type.deserializer,
-                model_class=type,
-                eager_type=model_type.redis_type if eager else None,
+            deserializer = partial(RedisSet.from_key, eager=eager)
+            serializer = RedisSet
+    elif issubclass(origin, MutableSequence):
+        optional = True
+        if is_model(args[0]):
+            deserializer = partial(
+                RedisModelList.from_key,
+                model_class=args[0],
+                eager=eager,
+                cascade=cascade,
             )
+            serializer = partial(RedisModelList, model_class=args[0], cascade=cascade)
         else:
-            self._deserializer = model_type.deserializer
-        self.transient = transient
+            deserializer = partial(RedisList.from_key, eager=eager)
+            serializer = RedisList
 
-    def serialize(self, model: Any) -> Any:
-        return self._serializer(getattr(model, self.name))
-
-    async def deserialize(self, model: Dict[str, Any]) -> Optional[Any]:
-        serialized = model.get(self.name)
-        if serialized is not None:
-            val = self._deserializer(serialized)
-            if iscoroutine(val):
-                val = await val
-            return val
-
-
-def _is_model(model: Union[Type, object]):
-    return (
-        is_dataclass(model)
-        and hasattr(model, "prefix")
-        and any([f.name == "id" for f in fields(model)])
-    )
-
-
-def model_fields(model_class: Type) -> List[ModelField]:
-    model_fields = []
-    for f in fields(model_class):
-        origin = get_origin(f.type)
-        args = get_args(f.type)
-        transient = _is_transient(f)
-        eager = True
-        field_type = f.type
-        model_field_type = ModelFieldType.DEFAULT
-
-        if isinstance(f.type, type) and _is_model(f.type):
-            model_field_type = ModelFieldType.MODEL
-        elif f.type == str:
-            model_field_type = ModelFieldType.STRING
-        elif is_optional_type(origin):
-            field_type = args[0]
-            if _is_model(field_type):
-                model_field_type = ModelFieldType.MODEL_OPTIONAL
-            elif field_type == str:
-                model_field_type = ModelFieldType.STRING
-        elif isinstance(origin, type):
-            if issubclass(origin, AbstractSet):
-                field_type = args[0]
-                model_field_type = (
-                    ModelFieldType.MODEL_SET
-                    if _is_model(args[0])
-                    else ModelFieldType.SET
-                )
-            elif issubclass(origin, Sequence):
-                field_type = args[0]
-                model_field_type = (
-                    ModelFieldType.MODEL_LIST
-                    if _is_model(args[0])
-                    else ModelFieldType.LIST
-                )
-            if issubclass(origin, LazyModelCollection):
-                eager = False
-        model_fields.append(
-            ModelField(f.name, field_type, model_field_type, transient, eager)
-        )
-    return model_fields
+    if deserializer:
+        metadata[FieldMetadata.DESERIALIZER] = deserializer
+    if serializer:
+        metadata[FieldMetadata.SERIALIZER] = serializer
+    metadata[FieldMetadata.OPTIONAL] = optional
+    field.metadata = MappingProxyType(metadata)
+    fields[name] = field
