@@ -59,7 +59,7 @@ def field(
     return dc_field(metadata=metadata, **kwargs)
 
 
-async def deserialize_reference(model_class: Type[T]):
+def deserialize_reference(model_class: Type[T]):
     async def deserializer(
         key: Union[int, str],
     ) -> Optional[T]:
