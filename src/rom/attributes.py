@@ -133,8 +133,8 @@ class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
         async with transaction():
             await super().save(optimistic=optimistic)
             if self._cascade:
-                async for v in self.values:
-                    v.save(optimistic=optimistic)
+                async for v in self:
+                    await v.save(optimistic=optimistic)
 
     @property
     def values(self):

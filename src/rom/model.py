@@ -1,6 +1,7 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields, replace
+from inspect import signature
 from typing import (Any, AsyncGenerator, AsyncIterator, Collection, Dict, Type,
                     TypeVar, Union, cast)
 
@@ -48,9 +49,21 @@ class Model(metaclass=ModelDataclassType):
         model_dict = {}
         for f in [f for f in fields(cls) if not is_transient(f)]:
             value = db_item.get(f.name)
-            model_dict[f.name] = None if is_optional(f) and value is None else await deserialize(f, value)
+            model_dict[f.name] = (
+                None
+                if is_optional(f) and value is None
+                else await deserialize(f, value)
+            )
 
         return cls(**model_dict)
+
+    @classmethod
+    def from_dict(cls: Type[T], model: Dict[str, Any], strict: bool = True) -> T:
+        return (
+            cls(**{k: v for k, v in model.items() if (k in signature(cls).parameters)})
+            if strict
+            else cls(**model)
+        )
 
     @classmethod
     async def all(cls: Type[T]) -> AsyncIterator[T]:
@@ -94,7 +107,7 @@ class Model(metaclass=ModelDataclassType):
                 tr.hmset_dict(self.db_id, model_dict)
                 tr.sadd(self.prefix(), self.id)
 
-    async def update(self, optimistic=False, **changes: Dict[str, Any]):
+    async def update(self, optimistic=False, **changes):
         async with self._serialized_model(optimistic, **changes) as model_dict:
             async with transaction() as tr:
                 for key, value in model_dict.items():
