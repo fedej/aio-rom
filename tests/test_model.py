@@ -69,7 +69,9 @@ class ModelTestCase(TestCase):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
-        self.mock_redis_client.smembers.side_effect.return_value = {"123", "124"}
+        keys = MagicMock()
+        keys.__aiter__.return_value=["123", "124"]
+        self.mock_redis_client.isscan.return_value = keys
         items = 0
         async for obj in ForTesting.all():
             assert 123 == obj.f1

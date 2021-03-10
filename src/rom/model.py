@@ -66,14 +66,17 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def all(cls: Type[T]) -> AsyncIterator[T]:
+    async def all(cls: Type[T], **kwargs) -> AsyncIterator[T]:
         async with connection() as conn:
-            for key in await conn.smembers(cls.prefix()):
-                value = cast(T, await cls.get(key))
-                if value:
-                    yield value
-                else:
-                    _logger.warning(f"{cls.__name__} Key: {key} orphaned")
+            found = set()
+            async for key in conn.isscan(cls.prefix(), **kwargs):
+                if key not in found:
+                    value = cast(T, await cls.get(key))
+                    if value:
+                        yield value
+                        found.add(key)
+                    else:
+                        _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @staticmethod
     async def flush():

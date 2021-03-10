@@ -65,7 +65,7 @@ def deserialize_reference(model_class: Type[T]):
     ) -> Optional[T]:
         if key is None:
             return None
-        return cast(T, await model_class.get(id))
+        return cast(T, await model_class.get(key))
 
     return deserializer
 
@@ -87,45 +87,48 @@ async def serialize(field: Field, key: str, value):
 def update_field(name, field_type, fields: Dict[str, Field]):
     field = fields.get(name, dc_field()) or dc_field()
     origin = get_origin(field_type) or field_type
-    args = get_args(field_type)
+    type_args = get_args(field_type)
     metadata = dict(getattr(field, "metadata", {}))
     eager = is_eager(field)
     cascade = is_cascade(field)
     optional = False
     deserializer = json.loads
     serializer = lambda _, value: json.dumps(value)
+
+    # Unwrap optional type
+    if is_optional_type(field_type):
+        optional = True
+        field_type = type_args[0]
+        type_args = get_args(field_type)
+
     if isinstance(field_type, type) and issubclass(field_type, str):
         deserializer = lambda x: x
         serializer = lambda _, v: v
     elif is_model(field_type):
         deserializer = deserialize_reference(field_type)
-    elif is_optional_type(field_type):
-        optional = True
-        if is_model(args[0]):
-            deserializer = deserialize_reference(args[0])
     elif issubclass(origin, AbstractSet):
         optional = True
-        if is_model(args[0]):
+        if is_model(type_args[0]):
             deserializer = partial(
                 RedisModelSet.from_key,
-                model_class=args[0],
+                model_class=type_args[0],
                 eager=eager,
                 cascade=cascade,
             )
-            serializer = partial(RedisModelSet, model_class=args[0], cascade=cascade)
+            serializer = partial(RedisModelSet, model_class=type_args[0], cascade=cascade)
         else:
             deserializer = partial(RedisSet.from_key, eager=eager)
             serializer = RedisSet
     elif issubclass(origin, MutableSequence):
         optional = True
-        if is_model(args[0]):
+        if is_model(type_args[0]):
             deserializer = partial(
                 RedisModelList.from_key,
-                model_class=args[0],
+                model_class=type_args[0],
                 eager=eager,
                 cascade=cascade,
             )
-            serializer = partial(RedisModelList, model_class=args[0], cascade=cascade)
+            serializer = partial(RedisModelList, model_class=type_args[0], cascade=cascade)
         else:
             deserializer = partial(RedisList.from_key, eager=eager)
             serializer = RedisList
