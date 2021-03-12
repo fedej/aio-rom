@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="aio-rom",
-    version="0.0.7",
+    version="0.0.8",
     author="Federico Jaite",
     author_email="fede_654_87@hotmail.com",
     description="asyncio based Redis object mapper",
