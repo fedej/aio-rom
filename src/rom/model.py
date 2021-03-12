@@ -47,8 +47,8 @@ class Model(metaclass=ModelDataclassType):
             raise cls.NotFoundException(f"{id} not found")  # type: ignore # pylint: disable=no-member
 
         model_fields = [f for f in fields(cls) if not is_transient(f)]
-        deserialized = asyncio.gather(
-            *[deserialize(f, db_item.get(f.name)) for f in fields]
+        deserialized = await asyncio.gather(
+            *[deserialize(f, db_item.get(f.name)) for f in model_fields]
         )
 
         return cls.from_dict(
