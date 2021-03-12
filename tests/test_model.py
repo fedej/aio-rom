@@ -87,10 +87,9 @@ class ModelTestCase(TestCase):
         self.mock_redis_client.keys.side_effect = CoroutineMock(
             return_value=["fortesting:123:reference"]
         )
-        delete = CoroutineMock()
-        self.mock_redis_client.delete.side_effect = delete
         await ForTesting(123, 987).delete()
-        delete.assert_called_with("fortesting:123:reference", "fortesting:123")
+        self.mock_redis_transaction.delete.assert_called_with("fortesting:123:reference", "fortesting:123")
+        self.mock_redis_transaction.srem.assert_called_with("fortesting", "fortesting:123")
 
     async def test_delete_all(self):
         self.mock_redis_client.keys.side_effect = CoroutineMock(

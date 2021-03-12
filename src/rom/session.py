@@ -49,8 +49,10 @@ async def connection(address: str = None, *args, **kwargs):
     async with redis_pool(address, *args, **kwargs) as redis:
         with await redis as conn:
             t = CONNECTION.set(conn)
-            yield conn
-            CONNECTION.reset(t)
+            try:
+                yield conn
+            finally:
+                CONNECTION.reset(t)
 
 
 @asynccontextmanager
@@ -66,5 +68,7 @@ async def transaction():
         try:
             yield transaction
         finally:
-            await transaction.execute()
-            TRANSACTION.reset(t)
+            try:
+                await transaction.execute()
+            finally:
+                TRANSACTION.reset(t)

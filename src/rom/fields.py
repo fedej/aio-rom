@@ -71,6 +71,8 @@ def deserialize_reference(model_class: Type[T]):
 
 
 async def deserialize(field: Field, value):
+    if value is None and is_optional(field):
+        return None
     val = field.metadata.get(FieldMetadata.DESERIALIZER)(value)
     if iscoroutine(val):
         val = await val
@@ -106,37 +108,40 @@ def update_field(name, field_type, fields: Dict[str, Field]):
         serializer = lambda _, v: v
     elif is_model(field_type):
         deserializer = deserialize_reference(field_type)
+        serializer = lambda _, v: v
     elif issubclass(origin, AbstractSet):
-        optional = True
         if is_model(type_args[0]):
             deserializer = partial(
                 RedisModelSet.from_key,
+                field.default_factory,
                 model_class=type_args[0],
                 eager=eager,
                 cascade=cascade,
             )
-            serializer = partial(RedisModelSet, model_class=type_args[0], cascade=cascade)
+            serializer = partial(
+                RedisModelSet.serialize, model_class=type_args[0], cascade=cascade
+            )
         else:
-            deserializer = partial(RedisSet.from_key, eager=eager)
+            deserializer = partial(RedisSet.from_key, field.default_factory, eager=eager)
             serializer = RedisSet
     elif issubclass(origin, MutableSequence):
-        optional = True
         if is_model(type_args[0]):
             deserializer = partial(
                 RedisModelList.from_key,
+                field.default_factory,
                 model_class=type_args[0],
                 eager=eager,
                 cascade=cascade,
             )
-            serializer = partial(RedisModelList, model_class=type_args[0], cascade=cascade)
+            serializer = partial(
+                RedisModelList.serialize, model_class=type_args[0], cascade=cascade
+            )
         else:
-            deserializer = partial(RedisList.from_key, eager=eager)
+            deserializer = partial(RedisList.from_key, field.default_factory, eager=eager)
             serializer = RedisList
 
-    if deserializer:
-        metadata[FieldMetadata.DESERIALIZER] = deserializer
-    if serializer:
-        metadata[FieldMetadata.SERIALIZER] = serializer
+    metadata[FieldMetadata.DESERIALIZER] = deserializer
+    metadata[FieldMetadata.SERIALIZER] = serializer
     metadata[FieldMetadata.OPTIONAL] = optional
     field.metadata = MappingProxyType(metadata)
     fields[name] = field

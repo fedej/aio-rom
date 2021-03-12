@@ -1,6 +1,7 @@
 import json
 from abc import ABCMeta, abstractmethod
 from asyncio.coroutines import iscoroutine
+from dataclasses import MISSING
 from typing import (TYPE_CHECKING, AbstractSet, Any, Collection, Dict, Generic,
                     Iterator, MutableSequence, MutableSet, Optional, Sequence,
                     Type, TypeVar, Union, cast)
@@ -20,8 +21,11 @@ class RedisCollection(Collection, metaclass=ABCMeta):
         self.values = values
 
     @classmethod
-    async def from_key(cls, key: str, eager: bool = False, **kwargs):
-        values = await cls.get_values_for_key(key) or []
+    async def from_key(cls, default_factory, key: str, eager: bool = False, **kwargs):
+        values = await cls.get_values_for_key(key)
+        if values is None:
+            return default_factory() if default_factory != MISSING else None
+
         collection = cls(
             key, type(values)([json.loads(value) for value in values]), **kwargs
         )
@@ -83,10 +87,12 @@ class RedisSet(MutableSet, RedisCollection):
                 conn.watch(self._key)
             async with transaction() as tr:
                 tr.delete(self._key)
-                tr.sadd(self._key, *super().values)
+                values = super().values
+                if values:
+                    tr.sadd(self._key, *values)
 
     def add(self, value):
-        self.values.append(value)
+        self.values.add(value)
 
     def discard(self, value):
         self.values.discard(value)
@@ -104,7 +110,9 @@ class RedisList(MutableSequence, RedisCollection):
                 conn.watch(self._key)
             async with transaction() as tr:
                 tr.delete(self._key)
-                tr.rpush(self._key, *super().values)
+                values = super().values
+                if values:
+                    tr.rpush(self._key, *values)
 
     def insert(self, index: int, value: T):
         self.values.insert(index, value)
@@ -121,13 +129,23 @@ class RedisList(MutableSequence, RedisCollection):
 
 class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
     def __init__(
-        self, key: str, keys: Sequence[int], model_class: Type[T] = None, cascade=False
+        self, key: str, keys: Sequence[int], model_class: Type[T], cascade: bool
     ):
         self._cache: Dict[int, T] = {}
         self._collection_type = type(keys)
         self._model_class = model_class
         self._cascade = cascade
         super().__init__(key, keys)
+
+    @classmethod
+    def serialize(
+        cls, key: str, keys: Sequence, model_class: Type[T] = None, cascade=False
+    ):
+        return (
+            keys
+            if isinstance(keys, ModelCollection)
+            else cls(key, keys, model_class, cascade)
+        )
 
     async def save(self, optimistic: bool = False):
         async with transaction():
@@ -142,15 +160,13 @@ class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
 
     @values.setter
     def values(self, values):
-        if values and isinstance(next(iter(values)), int):  # Lazy loading using keys
-            super(ModelCollection, type(self)).values.fset(
-                self, self._collection_type(values)
-            )
-        else:  # values: Collection[Model]
-            super(ModelCollection, type(self)).values.fset(
-                self, self._collection_type([v.id for v in values])
-            )
-            self._cache = {v.id: v for v in values}
+        self._cache = {v.id: v for v in values if hasattr(v, "id")}
+        keys = self._collection_type(
+            self._cache.keys()
+            if isinstance(values, ModelCollection)
+            else [getattr(v, "id", v) for v in values]
+        )
+        super(ModelCollection, type(self)).values.fset(self, keys)
 
     async def _get_item(self, key: int) -> Optional[T]:
         if key in self._cache:

@@ -13,9 +13,13 @@ class Bar(Model):
 
 
 class Foo(Model):
-    eager_bars: List[Bar] = field(eager=True)
+    eager_bars: List[Bar] = field(eager=True, hash=False)
     f1: Optional[str] = None
     lazy_bars: Set[Bar] = field(compare=False)
+
+
+class FooBar(Model):
+    foos: Set[Foo] = field(eager=True, cascade=True)
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
@@ -27,6 +31,7 @@ class RedisIntegrationTestCase(TestCase):
     async def tearDown(self):
         await Foo.delete_all()
         await Bar.delete_all()
+        await FooBar.delete_all()
 
     async def test_save(self):
         await self.bar.save()
@@ -54,8 +59,44 @@ class RedisIntegrationTestCase(TestCase):
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
         async for bar in gotten_foo.lazy_bars:
-            bar in foo.lazy_bars
+            assert bar in foo.lazy_bars
         assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
+
+    async def _test_collection_references(self, test_cascade=False):
+        await self.bar.save()
+        foo = Foo(123, [self.bar], None, set([self.bar]))
+        if not test_cascade:
+            await foo.save()
+        foobar = FooBar(321, set([foo]))
+        await foobar.save()
+
+        gotten_foobar = await FooBar.get(321)
+        assert foobar == gotten_foobar
+        assert set([foo]) == gotten_foobar.foos
+        for gotten_foo in gotten_foobar.foos:
+            assert 1 == len(gotten_foo.eager_bars)
+            async for bar in gotten_foo.lazy_bars:
+                assert bar in foo.lazy_bars
+
+    async def test_collections(self):
+        await self._test_collection_references()
+
+    async def test_collection_cascades_references(self):
+        await self._test_collection_references(test_cascade=True)
+
+    async def test_update_collection_references(self):
+        await self.bar.save()
+        foo = Foo(123, [self.bar], None, set([self.bar]))
+        foobar = FooBar(321, set([foo]))
+        await foobar.save()
+        refreshed = await foobar.refresh()
+        foo2 = Foo(222, [], None, set([]))
+        refreshed.foos.add(foo2)
+        await refreshed.save()
+
+        gotten_foobar = await FooBar.get(321)
+        assert refreshed == gotten_foobar
+        assert set([foo, foo2]) == gotten_foobar.foos
 
     async def test_update(self):
         await self.bar.save()
