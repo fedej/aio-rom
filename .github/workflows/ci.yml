@@ -29,17 +29,22 @@ jobs:
         with:
           redis-version: ${{ matrix.redis-version }}
       - name: Install dependencies
-        run: pip install tox
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox tox-gh-actions
       - name: Run Tox
-        run: tox -e py
+        run: CI=true tox
+      - name: Upload coverage.xml
+        if: ${{ matrix.platform == 'ubuntu-latest' && matrix.python-version == '3.9' }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: rom-coverage
+          path: coverage.xml
+          if-no-files-found: error
       - name: Codecov
+        if: ${{ matrix.platform == 'ubuntu-latest' && matrix.python-version == '3.9' }}
         uses: codecov/codecov-action@v1.2.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          # Flag upload to group coverage metrics (e.g. unittests | integration | ui,chrome)
           flags: unittests
           env_vars: OS,PYTHON
-          # Path to coverage file to upload
-          file: ./coverage.xml
-          # Move discovered coverage reports to the trash
-          move_coverage_to_trash: true
