@@ -1,3 +1,4 @@
+import asyncio
 import json
 from abc import ABCMeta, abstractmethod
 from asyncio.coroutines import iscoroutine
@@ -30,13 +31,15 @@ class RedisCollection(Collection, metaclass=ABCMeta):
             key, type(values)([json.loads(value) for value in values]), **kwargs
         )
         if eager:
-            async for _ in collection:
-                pass
+            await collection.load()
             return collection.values
         return collection
 
     @abstractmethod
     async def save(self, optimistic: bool = False):
+        pass
+
+    async def load(self):
         pass
 
     @classmethod
@@ -92,10 +95,11 @@ class RedisSet(MutableSet, RedisCollection):
                     tr.sadd(self._key, *values)
 
     def add(self, value):
-        self.values.add(value)
+        super().values.add(value)
+
 
     def discard(self, value):
-        self.values.discard(value)
+        super().values.discard(value)
 
 
 class RedisList(MutableSequence, RedisCollection):
@@ -115,16 +119,16 @@ class RedisList(MutableSequence, RedisCollection):
                     tr.rpush(self._key, *values)
 
     def insert(self, index: int, value: T):
-        self.values.insert(index, value)
+        super().values.insert(index, value)
 
     def __getitem__(self, i: Union[int, slice]) -> Union[Any, Sequence[Any]]:
-        return self.values.__getitem__(i)
+        return super().values.__getitem__(i)
 
     def __setitem__(self, i: Union[int, slice], o: Union[Any, Sequence[Any]]):
-        self.values.__setitem__(i, o)
+        super().values.__setitem__(i, o)
 
     def __delitem__(self, i: int):
-        self.values.__delitem__(i)
+        super().values.__delitem__(i)
 
 
 class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
@@ -151,8 +155,12 @@ class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
         async with transaction():
             await super().save(optimistic=optimistic)
             if self._cascade:
-                async for v in self:
+                for v in self.values:
                     await v.save(optimistic=optimistic)
+
+    async def load(self):
+        async with connection():
+            await asyncio.gather(*[self._get_item(key) for key in super().values])
 
     @property
     def values(self):

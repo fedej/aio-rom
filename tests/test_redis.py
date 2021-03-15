@@ -15,7 +15,7 @@ class Bar(Model):
 class Foo(Model):
     eager_bars: List[Bar] = field(eager=True, hash=False)
     f1: Optional[str] = None
-    lazy_bars: Set[Bar] = field(compare=False)
+    lazy_bars: Set[Bar] = field(compare=False, cascade=True)
 
 
 class FooBar(Model):
@@ -58,7 +58,8 @@ class RedisIntegrationTestCase(TestCase):
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
-        async for bar in gotten_foo.lazy_bars:
+        await gotten_foo.lazy_bars.load()
+        for bar in gotten_foo.lazy_bars:
             assert bar in foo.lazy_bars
         assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
 
@@ -75,7 +76,8 @@ class RedisIntegrationTestCase(TestCase):
         assert set([foo]) == gotten_foobar.foos
         for gotten_foo in gotten_foobar.foos:
             assert 1 == len(gotten_foo.eager_bars)
-            async for bar in gotten_foo.lazy_bars:
+            await gotten_foo.lazy_bars.load()
+            for bar in gotten_foo.lazy_bars:
                 assert bar in foo.lazy_bars
 
     async def test_collections(self):
@@ -149,3 +151,16 @@ class RedisIntegrationTestCase(TestCase):
         async with redis_pool() as redis:
             await Bar.delete_all()
             assert not await redis.keys("bar*")
+
+    async def test_lazy_collection_cascade(self):
+        foo = Foo(123, [self.bar], None, set([self.bar]))
+        await foo.save()
+        foo = await Foo.get(123)
+        other_bar = Bar(2, 124, "value2", [])
+        foo.lazy_bars.add(other_bar)
+        await foo.save()
+        gotten_foo = await Foo.get(123)
+        assert foo == gotten_foo
+        await gotten_foo.lazy_bars.load()
+        await foo.lazy_bars.load()
+        assert 2 == len(foo.lazy_bars) == len(gotten_foo.lazy_bars)

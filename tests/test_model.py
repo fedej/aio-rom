@@ -65,7 +65,7 @@ class ModelTestCase(TestCase):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(return_value=None)
         await self.assertAsyncRaises(ModelNotFoundException, ForTesting.get(123))
 
-    async def test_get_all(self):
+    async def test_scan(self):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
@@ -73,7 +73,19 @@ class ModelTestCase(TestCase):
         keys.__aiter__.return_value=["123", "124"]
         self.mock_redis_client.isscan.return_value = keys
         items = 0
-        async for obj in ForTesting.all():
+        async for obj in ForTesting.scan():
+            assert 123 == obj.f1
+            assert isinstance(obj.id, int)
+            items += 1
+        assert 2 == items
+
+    async def test_all(self):
+        self.mock_redis_client.smembers.side_effect.return_value=["123", "124"]
+        self.mock_redis_client.hgetall.side_effect = CoroutineMock(
+            side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
+        )
+        items = 0
+        for obj in await ForTesting.all():
             assert 123 == obj.f1
             assert isinstance(obj.id, int)
             items += 1

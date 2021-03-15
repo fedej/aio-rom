@@ -2,8 +2,8 @@ import asyncio
 import logging
 from dataclasses import dataclass, field, fields, replace
 from inspect import iscoroutinefunction, signature
-from typing import (Any, AsyncIterator, Collection, Dict, Type, TypeVar, Union,
-                    cast)
+from typing import (Any, AsyncIterator, Collection, Dict, List, Type, TypeVar,
+                    Union, cast)
 
 from .exception import ModelNotFoundException
 from .fields import (deserialize, is_cascade, is_transient, serialize,
@@ -66,7 +66,7 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def all(cls: Type[T], **kwargs) -> AsyncIterator[T]:
+    async def scan(cls: Type[T], **kwargs) -> AsyncIterator[T]:
         async with connection() as conn:
             found = set()
             async for key in conn.isscan(cls.prefix(), **kwargs):
@@ -77,6 +77,12 @@ class Model(metaclass=ModelDataclassType):
                         found.add(key)
                     else:
                         _logger.warning(f"{cls.__name__} Key: {key} orphaned")
+
+    @classmethod
+    async def all(cls: Type[T]) -> List[T]:
+        async with connection() as conn:
+            keys = await conn.smembers(cls.prefix())
+            return await asyncio.gather(*[cls.get(key) for key in keys])
 
     @staticmethod
     async def flush():
@@ -150,7 +156,7 @@ class Model(metaclass=ModelDataclassType):
                 if iscoroutinefunction(getattr(value, "save", None))
                 else value
                 for field, value in serialized_fields
-                if value or iscoroutinefunction(getattr(value, "save", None))
+                if value is not None or iscoroutinefunction(getattr(value, "save", None))
             }
 
     async def delete(self):
