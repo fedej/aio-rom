@@ -33,7 +33,7 @@ jobs:
       - name: Run Tox
         run: tox -e py
       - name: Codecov
-        uses: codecov/codecov-action@v1.2.1
+        uses: codecov/codecov-action@v1.2.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           # Flag upload to group coverage metrics (e.g. unittests | integration | ui,chrome)
