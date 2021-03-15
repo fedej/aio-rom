@@ -70,7 +70,7 @@ class ModelTestCase(TestCase):
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
         keys = MagicMock()
-        keys.__aiter__.return_value=["123", "124"]
+        keys.__aiter__.return_value = ["123", "124"]
         self.mock_redis_client.isscan.return_value = keys
         items = 0
         async for obj in ForTesting.scan():
@@ -80,7 +80,7 @@ class ModelTestCase(TestCase):
         assert 2 == items
 
     async def test_all(self):
-        self.mock_redis_client.smembers.side_effect.return_value=["123", "124"]
+        self.mock_redis_client.smembers.side_effect.return_value = ["123", "124"]
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
@@ -100,8 +100,12 @@ class ModelTestCase(TestCase):
             return_value=["fortesting:123:reference"]
         )
         await ForTesting(123, 987).delete()
-        self.mock_redis_transaction.delete.assert_called_with("fortesting:123:reference", "fortesting:123")
-        self.mock_redis_transaction.srem.assert_called_with("fortesting", "fortesting:123")
+        self.mock_redis_transaction.delete.assert_called_with(
+            "fortesting:123:reference", "fortesting:123"
+        )
+        self.mock_redis_transaction.srem.assert_called_with(
+            "fortesting", "fortesting:123"
+        )
 
     async def test_delete_all(self):
         self.mock_redis_client.keys.side_effect = CoroutineMock(
@@ -125,7 +129,6 @@ class ModelTestCase(TestCase):
         assert not await ForTesting.persisted(1)
         assert await ForTesting(1, "123").exists()
         assert not await ForTesting(1, "123").exists()
-
 
     async def test_refresh(self):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(

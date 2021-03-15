@@ -1,0 +1,16 @@
+[build-system]
+requires = [
+    "setuptools >= 40.0.4",
+    "wheel >= 0.29.0",
+]
+build-backend = 'setuptools.build_meta'
+
+[tool.black]
+# py39 is not supported yet
+target-version = ["py37", "py38"]
+
+[tool.coverage.paths]
+# For combining source file paths correctly
+source = [
+   "src"
+]

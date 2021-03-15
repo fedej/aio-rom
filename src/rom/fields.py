@@ -7,8 +7,17 @@ from dataclasses import is_dataclass
 from enum import Enum, auto
 from functools import partial
 from types import MappingProxyType
-from typing import (TYPE_CHECKING, AbstractSet, Any, Dict, Optional, Type,
-                    TypeVar, Union, cast)
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Dict,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from typing_inspect import get_args, get_origin, is_optional_type
 
@@ -86,6 +95,18 @@ async def serialize(field: Field, key: str, value):
     return val
 
 
+def default_serializer(key, value):
+    return json.dumps(value)
+
+
+def passthrough_serializer(key, value):
+    return value
+
+
+def passthrough_deserializer(value):
+    return value
+
+
 def update_field(name, field_type, fields: Dict[str, Field]):
     field = fields.get(name, dc_field()) or dc_field()
     origin = get_origin(field_type) or field_type
@@ -95,7 +116,7 @@ def update_field(name, field_type, fields: Dict[str, Field]):
     cascade = is_cascade(field)
     optional = False
     deserializer = json.loads
-    serializer = lambda _, value: json.dumps(value)
+    serializer = default_serializer
 
     # Unwrap optional type
     if is_optional_type(field_type):
@@ -104,11 +125,11 @@ def update_field(name, field_type, fields: Dict[str, Field]):
         type_args = get_args(field_type)
 
     if isinstance(field_type, type) and issubclass(field_type, str):
-        deserializer = lambda x: x
-        serializer = lambda _, v: v
+        deserializer = passthrough_deserializer
+        serializer = passthrough_serializer
     elif is_model(field_type):
         deserializer = deserialize_reference(field_type)
-        serializer = lambda _, v: v
+        serializer = passthrough_serializer
     elif issubclass(origin, AbstractSet):
         if is_model(type_args[0]):
             deserializer = partial(
@@ -122,7 +143,9 @@ def update_field(name, field_type, fields: Dict[str, Field]):
                 RedisModelSet.serialize, model_class=type_args[0], cascade=cascade
             )
         else:
-            deserializer = partial(RedisSet.from_key, field.default_factory, eager=eager)
+            deserializer = partial(
+                RedisSet.from_key, field.default_factory, eager=eager
+            )
             serializer = RedisSet
     elif issubclass(origin, MutableSequence):
         if is_model(type_args[0]):
@@ -137,7 +160,9 @@ def update_field(name, field_type, fields: Dict[str, Field]):
                 RedisModelList.serialize, model_class=type_args[0], cascade=cascade
             )
         else:
-            deserializer = partial(RedisList.from_key, field.default_factory, eager=eager)
+            deserializer = partial(
+                RedisList.from_key, field.default_factory, eager=eager
+            )
             serializer = RedisList
 
     metadata[FieldMetadata.DESERIALIZER] = deserializer

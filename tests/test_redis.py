@@ -24,7 +24,6 @@ class FooBar(Model):
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
 class RedisIntegrationTestCase(TestCase):
-
     async def setUp(self):
         self.bar = Bar(1, 123, "value", [1, 2, 3])
 

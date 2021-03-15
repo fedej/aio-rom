@@ -2,12 +2,20 @@ import asyncio
 import logging
 from dataclasses import dataclass, field, fields, replace
 from inspect import iscoroutinefunction, signature
-from typing import (Any, AsyncIterator, Collection, Dict, List, Type, TypeVar,
-                    Union, cast)
+from typing import (
+    Any,
+    AsyncIterator,
+    Collection,
+    Dict,
+    List,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from .exception import ModelNotFoundException
-from .fields import (deserialize, is_cascade, is_transient, serialize,
-                     update_field)
+from .fields import deserialize, is_cascade, is_transient, serialize, update_field
 from .session import connection, transaction
 
 _logger = logging.getLogger(__name__)
@@ -44,7 +52,7 @@ class Model(metaclass=ModelDataclassType):
             db_item = cast(Dict[str, Any], await conn.hgetall(f"{cls.prefix()}:{id}"))
 
         if not db_item:
-            raise cls.NotFoundException(f"{id} not found")  # type: ignore # pylint: disable=no-member
+            raise cls.NotFoundException(f"{id} not found")  # type: ignore
 
         model_fields = [f for f in fields(cls) if not is_transient(f)]
         deserialized = await asyncio.gather(
@@ -156,7 +164,8 @@ class Model(metaclass=ModelDataclassType):
                 if iscoroutinefunction(getattr(value, "save", None))
                 else value
                 for field, value in serialized_fields
-                if value is not None or iscoroutinefunction(getattr(value, "save", None))
+                if value is not None
+                or iscoroutinefunction(getattr(value, "save", None))
             }
 
     async def delete(self):

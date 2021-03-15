@@ -3,9 +3,23 @@ import json
 from abc import ABCMeta, abstractmethod
 from asyncio.coroutines import iscoroutine
 from dataclasses import MISSING
-from typing import (TYPE_CHECKING, AbstractSet, Any, Collection, Dict, Generic,
-                    Iterator, MutableSequence, MutableSet, Optional, Sequence,
-                    Type, TypeVar, Union, cast)
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Collection,
+    Dict,
+    Generic,
+    Iterator,
+    MutableSequence,
+    MutableSet,
+    Optional,
+    Sequence,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 if TYPE_CHECKING:
     from .model import Model
@@ -96,7 +110,6 @@ class RedisSet(MutableSet, RedisCollection):
 
     def add(self, value):
         super().values.add(value)
-
 
     def discard(self, value):
         super().values.discard(value)

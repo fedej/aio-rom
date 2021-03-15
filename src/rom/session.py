@@ -28,7 +28,7 @@ async def redis_pool(address: str = None, *args, **kwargs):
         address if address else config.get("address", "redis://localhost"),
         encoding=kwargs.get("encoding", "utf-8"),
         *args if args else config.get("args", []),
-        **kwargs if kwargs else config.get("kwargs", {})
+        **kwargs if kwargs else config.get("kwargs", {}),
     )
     t = REDIS.set(redis)
     try:

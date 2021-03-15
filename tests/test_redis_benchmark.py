@@ -89,7 +89,6 @@ class Benchmark(TestCase):
         result = self.benchmark(self.run_coro, scan)
         assert self.items == len(result)
 
-
     def test_cascade_save(self):
         foo = Foo(1)
         for i in range(self.items):
