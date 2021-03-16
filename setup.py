@@ -1,3 +1,3 @@
 from setuptools import setup
 
-setup(version="0.0.8")
+setup(use_scm_version=True)
