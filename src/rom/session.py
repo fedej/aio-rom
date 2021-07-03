@@ -1,17 +1,18 @@
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from typing import Optional, Dict, Any, AsyncIterator
 
-from aioredis.commands import ContextRedis, Redis, create_redis_pool
-from aioredis.commands.transaction import MultiExec
+from aioredis.commands import ContextRedis, Redis, create_redis_pool  # type: ignore
+from aioredis.commands.transaction import MultiExec  # type: ignore
 
-REDIS: ContextVar[Redis] = ContextVar("redis", default=None)
-CONNECTION: ContextVar[ContextRedis] = ContextVar("connection", default=None)
-TRANSACTION: ContextVar[MultiExec] = ContextVar("transaction", default=None)
+REDIS: ContextVar[Optional[Redis]] = ContextVar("redis", default=None)
+CONNECTION: ContextVar[Optional[ContextRedis]] = ContextVar("connection", default=None)
+TRANSACTION: ContextVar[Optional[MultiExec]] = ContextVar("transaction", default=None)
 
-config = {}
+config: Dict[str, Any] = {}
 
 
-def configure(address: str = None, *args, **kwargs):
+def configure(address: Optional[str] = None, *args: Any, **kwargs: Any) -> None:
     global config
     config["address"] = address
     config["args"] = args
@@ -19,7 +20,9 @@ def configure(address: str = None, *args, **kwargs):
 
 
 @asynccontextmanager
-async def redis_pool(address: str = None, *args, **kwargs):
+async def redis_pool(
+    address: Optional[str] = None, *args: Any, **kwargs: Any
+) -> AsyncIterator[Redis]:
     redis = REDIS.get()
     if redis:
         yield redis
@@ -40,7 +43,9 @@ async def redis_pool(address: str = None, *args, **kwargs):
 
 
 @asynccontextmanager
-async def connection(address: str = None, *args, **kwargs):
+async def connection(
+    address: Optional[str] = None, *args: Any, **kwargs: Any
+) -> AsyncIterator[ContextRedis]:
     connection = CONNECTION.get()
     if connection:
         yield connection
@@ -56,7 +61,7 @@ async def connection(address: str = None, *args, **kwargs):
 
 
 @asynccontextmanager
-async def transaction():
+async def transaction() -> AsyncIterator[MultiExec]:
     transaction = TRANSACTION.get()
     if transaction:
         yield transaction

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from dataclasses import dataclass, field, fields, replace
@@ -7,7 +9,9 @@ from typing import (
     AsyncIterator,
     Collection,
     Dict,
+    Generic,
     List,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -15,18 +19,24 @@ from typing import (
 )
 
 from .exception import ModelNotFoundException
+from .attributes import Key, RedisValue
 from .fields import deserialize, is_cascade, is_transient, serialize, update_field
 from .session import connection, transaction
 
 _logger = logging.getLogger(__name__)
 
+T = TypeVar("T", bound="Model")
 
-class ModelDataclassType(type):
-    def __new__(cls, name, bases, dict):
-        for field_name, field_type in dict.get("__annotations__", {}).items():
-            update_field(field_name, field_type, dict)
-        model_class = dataclass(
-            super().__new__(cls, name, bases, dict), unsafe_hash=True
+
+class ModelDataclassType(type, Generic[T]):
+    def __new__(
+        cls, name: str, bases: Tuple[type, ...], namespace: Dict[str, Any]
+    ) -> ModelDataclassType[T]:
+        for field_name, field_type in namespace.get("__annotations__", {}).items():
+            update_field(field_name, field_type, namespace)
+
+        model_class: Type[T] = dataclass(unsafe_hash=True)(
+            cast(type, super().__new__(cls, name, bases, namespace))
         )
         setattr(
             model_class,
@@ -34,9 +44,6 @@ class ModelDataclassType(type):
             type("NotFoundException", (ModelNotFoundException,), {}),
         )
         return model_class
-
-
-T = TypeVar("T", bound="Model")
 
 
 class Model(metaclass=ModelDataclassType):
@@ -47,9 +54,11 @@ class Model(metaclass=ModelDataclassType):
         return f"{cls.__name__.lower()}"
 
     @classmethod
-    async def get(cls: Type[T], id: Union[int, str]) -> T:
+    async def get(cls: Type[T], id: Key) -> T:
         async with connection() as conn:
-            db_item = cast(Dict[str, Any], await conn.hgetall(f"{cls.prefix()}:{id}"))
+            db_item = cast(
+                Dict[str, RedisValue], await conn.hgetall(f"{cls.prefix()}:{id!r}")
+            )
 
         if not db_item:
             raise cls.NotFoundException(f"{id} not found")  # type: ignore
@@ -68,18 +77,18 @@ class Model(metaclass=ModelDataclassType):
     def from_dict(cls: Type[T], model: Dict[str, Any], strict: bool = True) -> T:
         parameters = signature(cls).parameters
         return (
-            cls(**{k: v for k, v in model.items() if k in parameters})
+            cls(**{k: v for k, v in model.items() if k in parameters})  # type: ignore
             if strict
-            else cls(**model)
+            else cls(**model)  # type: ignore
         )
 
     @classmethod
-    async def scan(cls: Type[T], **kwargs) -> AsyncIterator[T]:
+    async def scan(cls: Type[T], **kwargs: Union[str, int]) -> AsyncIterator[T]:
         async with connection() as conn:
             found = set()
             async for key in conn.isscan(cls.prefix(), **kwargs):
                 if key not in found:
-                    value = cast(T, await cls.get(key))
+                    value = await cls.get(key)
                     if value:
                         yield value
                         found.add(key)
@@ -93,45 +102,47 @@ class Model(metaclass=ModelDataclassType):
             return await asyncio.gather(*[cls.get(key) for key in keys])
 
     @staticmethod
-    async def flush():
+    async def flush() -> None:
         async with connection() as conn:
             await conn.flushdb()
 
     @classmethod
     async def count(cls) -> int:
         async with connection() as conn:
-            return await conn.scard(cls.prefix())
+            return int(await conn.scard(cls.prefix()))
 
     @classmethod
-    async def delete_all(cls: Type):
+    async def delete_all(cls: Type[T]) -> None:
         key_prefix = cls.prefix()
         async with connection() as conn:
             keys = await conn.keys(f"{key_prefix}:*")
             await conn.delete(key_prefix, *keys)
 
     @classmethod
-    async def persisted(cls: Type, id: int) -> bool:
+    async def persisted(cls: Type[T], id: int) -> bool:
         async with connection() as conn:
-            return await conn.exists(f"{cls.prefix()}:{id}")
+            return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
     @property
     def db_id(self) -> str:
         return f"{self.prefix()}:{self.id}"
 
-    async def save(self, optimistic=False):
+    async def save(self, optimistic: bool = False) -> None:
         async with transaction() as tr:
             model_dict = await self._serialized_model(optimistic)
             tr.hmset_dict(self.db_id, model_dict)
             tr.sadd(self.prefix(), self.id)
 
-    async def update(self, optimistic=False, **changes) -> T:
+    async def update(self: T, optimistic: bool = False, **changes: Any) -> T:
         async with transaction() as tr:
             model_dict = await self._serialized_model(optimistic, **changes)
             for key, value in model_dict.items():
                 tr.hset(self.db_id, key, value)
             return replace(self, **changes)
 
-    async def _serialized_model(self, optimistic, **changes) -> Dict[str, Any]:
+    async def _serialized_model(
+        self: T, optimistic: bool, **changes: Any
+    ) -> Dict[str, Any]:
         async with connection() as conn:
             if optimistic:
                 conn.watch(self.db_id)
@@ -168,7 +179,7 @@ class Model(metaclass=ModelDataclassType):
                 or iscoroutinefunction(getattr(value, "save", None))
             }
 
-    async def delete(self):
+    async def delete(self) -> None:
         key = self.db_id
         async with connection() as conn:
             keys = await conn.keys(f"{key}:*")
@@ -178,8 +189,7 @@ class Model(metaclass=ModelDataclassType):
 
     async def exists(self) -> bool:
         async with connection() as conn:
-            return await conn.exists(self.db_id)
+            return bool(await conn.exists(self.db_id))
 
     async def refresh(self: T) -> T:
-        refreshed = await type(self).get(self.id)
-        return cast(T, refreshed)
+        return await type(self).get(self.id)

@@ -1,251 +1,322 @@
+from __future__ import annotations
+
 import asyncio
+import collections
+import dataclasses
 import json
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 from asyncio.coroutines import iscoroutine
-from dataclasses import MISSING
+from typing_extensions import SupportsIndex
+from dataclasses import dataclass, MISSING
 from typing import (
     TYPE_CHECKING,
-    AbstractSet,
+    Awaitable,
     Any,
+    AsyncIterator,
     Collection,
+    Coroutine,
     Dict,
     Generic,
     Iterator,
+    Iterable,
     MutableSequence,
-    MutableSet,
     Optional,
+    overload,
     Sequence,
     Type,
     TypeVar,
     Union,
     cast,
+    Callable,
+    List,
+    Set,
 )
 
 if TYPE_CHECKING:
     from .model import Model
 
+    UserList = collections.UserList
+else:
+
+    class _UserList:
+        def __getitem__(*args):
+            return collections.UserList
+
+    UserList = _UserList()
+
 from .exception import ModelNotLoadedException
 from .session import connection, transaction
 
-T = TypeVar("T", bound="Model")
+T = TypeVar("T")
+M = TypeVar("M", bound="Model")
+RedisValue = Union[str, bytes]
+Key = Union[int, RedisValue]
 
 
-class RedisCollection(Collection, metaclass=ABCMeta):
-    def __init__(self, key: str, values: Sequence):
-        self._key = key
+class RedisCollection(Collection[T], Generic[T], metaclass=ABCMeta):
+    def __init__(self, key: Key, values: Collection[T], **kwargs: Any):
+        self.key = key
         self.values = values
 
     @classmethod
-    async def from_key(cls, default_factory, key: str, eager: bool = False, **kwargs):
+    async def from_key(
+        cls,
+        default_factory: Callable[[], Collection[T]],
+        key: Key,
+        eager: bool = False,
+        **kwargs: Any,
+    ) -> Collection[T]:
         values = await cls.get_values_for_key(key)
         if values is None:
             return default_factory() if default_factory != MISSING else None
 
-        collection = cls(
-            key, type(values)([json.loads(value) for value in values]), **kwargs
-        )
+        collection = cls(key, values, **kwargs)
         if eager:
             await collection.load()
             return collection.values
         return collection
 
     @abstractmethod
-    async def save(self, optimistic: bool = False):
+    async def save(self, optimistic: bool = False) -> None:
         pass
 
-    async def load(self):
+    async def load(self) -> None:
         pass
 
     @classmethod
     @abstractmethod
-    async def get_values_for_key(cls, key: str) -> Sequence:
+    async def get_values_for_key(cls, key: Key) -> Collection[T]:
         pass
 
     @property
-    def values(self):
+    def values(self) -> Collection[T]:
         return self._values
 
     @values.setter
-    def values(self, value):
-        self._values = value
+    def values(self, values: Collection[T]) -> None:
+        self._values = values
 
-    def __iter__(self) -> Iterator:
+    def __iter__(self) -> Iterator[T]:
         return filter(None, iter(self.values))
 
     def __len__(self) -> int:
         return len(self.values)
 
-    def __contains__(self, x) -> bool:
+    def __contains__(self, x: object) -> bool:
         return x in self.values
 
-    def __aiter__(self):
-        self._iter = iter(self.values)
-        return self
 
-    async def __anext__(self):
-        try:
-            val = next(self._iter)
-            if iscoroutine(val):
-                return await val
-            return val
-        except StopIteration:
-            raise StopAsyncIteration
-
-
-class RedisSet(MutableSet, RedisCollection):
+class RedisSet(RedisCollection[T], Set[T], Generic[T]):
     @classmethod
-    async def get_values_for_key(cls, id: int) -> AbstractSet:
+    async def get_values_for_key(cls, key: Key) -> Set[T]:
         async with connection() as conn:
-            return set(await conn.smembers(id))
+            return {json.loads(value) for value in await conn.smembers(key)}
 
-    async def save(self, optimistic: bool = False):
+    async def save(self, optimistic: bool = False) -> None:
         async with connection() as conn:
             if optimistic:
-                conn.watch(self._key)
+                conn.watch(self.key)
             async with transaction() as tr:
-                tr.delete(self._key)
+                tr.delete(self.key)
                 values = super().values
                 if values:
-                    tr.sadd(self._key, *values)
+                    tr.sadd(self.key, *values)
 
-    def add(self, value):
-        super().values.add(value)
+    def add(self, value: T) -> None:
+        cast(Set[T], super().values).add(value)
 
-    def discard(self, value):
-        super().values.discard(value)
+    def discard(self, value: T) -> None:
+        cast(Set[T], super().values).discard(value)
 
 
-class RedisList(MutableSequence, RedisCollection):
+class RedisList(RedisCollection[T], UserList[T], Generic[T]):
     @classmethod
-    async def get_values_for_key(cls, id: int) -> Sequence:
+    async def get_values_for_key(cls, key: Key) -> List[T]:
         async with connection() as redis:
-            return await redis.lrange(id, 0, -1)
+            return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
-    async def save(self, optimistic: bool = False):
+    async def save(self, optimistic: bool = False) -> None:
         async with connection() as conn:
             if optimistic:
-                conn.watch(self._key)
+                conn.watch(self.key)
             async with transaction() as tr:
-                tr.delete(self._key)
+                tr.delete(self.key)
                 values = super().values
                 if values:
-                    tr.rpush(self._key, *values)
+                    tr.rpush(self.key, *values)
 
-    def insert(self, index: int, value: T):
-        super().values.insert(index, value)
+    def insert(self, index: int, value: T) -> None:
+        cast(List[T], super().values).insert(index, value)
 
-    def __getitem__(self, i: Union[int, slice]) -> Union[Any, Sequence[Any]]:
-        return super().values.__getitem__(i)
+    @overload
+    def __getitem__(self, i: int) -> T:
+        ...
 
-    def __setitem__(self, i: Union[int, slice], o: Union[Any, Sequence[Any]]):
-        super().values.__setitem__(i, o)
+    @overload
+    def __getitem__(self, i: slice) -> List[T]:
+        ...
 
-    def __delitem__(self, i: int):
-        super().values.__delitem__(i)
+    def __getitem__(self, i: Union[int, slice]) -> Union[T, List[T]]:
+        return cast(List[T], super().values).__getitem__(i)
+
+    @overload
+    def __setitem__(self, index: int, o: T) -> None:
+        ...
+
+    @overload
+    def __setitem__(self, index: slice, o: Iterable[T]) -> None:
+        ...
+
+    def __setitem__(self, i: Union[int, slice], o: Union[T, Iterable[T]]) -> None:
+        if isinstance(i, slice) and isinstance(o, Iterable):
+            cast(List[T], super().values).__setitem__(i, o)
+        elif isinstance(i, int) and not isinstance(o, Iterable):
+            cast(List[T], super().values).insert(i, o)
+
+    def __delitem__(self, i: Union[int, slice]) -> None:
+        cast(List[T], super().values).__delitem__(i)
 
 
-class ModelCollection(RedisCollection, Generic[T], metaclass=ABCMeta):
+class ModelCollection(
+    RedisCollection[M], MutableSequence[M], AsyncIterator[M], metaclass=ABCMeta
+):
     def __init__(
-        self, key: str, keys: Sequence[int], model_class: Type[T], cascade: bool
+        self, key: Key, keys: Collection[Key], model_class: Type[M], cascade: bool
     ):
-        self._cache: Dict[int, T] = {}
-        self._collection_type = type(keys)
+        self._cache: Dict[Key, Optional[M]] = {key: None for key in keys}
         self._model_class = model_class
         self._cascade = cascade
-        super().__init__(key, keys)
 
     @classmethod
     def serialize(
-        cls, key: str, keys: Sequence, model_class: Type[T] = None, cascade=False
-    ):
+        cls,
+        key: Key,
+        keys: Union[Collection[Key], ModelCollection[M]],
+        model_class: Type[M],
+        cascade: bool = False,
+    ) -> ModelCollection[M]:
         return (
             keys
             if isinstance(keys, ModelCollection)
             else cls(key, keys, model_class, cascade)
         )
 
-    async def save(self, optimistic: bool = False):
+    async def save(self, optimistic: bool = False) -> None:
         async with transaction():
             await super().save(optimistic=optimistic)
             if self._cascade:
-                for v in self.values:
-                    await v.save(optimistic=optimistic)
+                await asyncio.gather(
+                    *[v.save(optimistic=optimistic) for v in self.values]
+                )
 
-    async def load(self):
+    async def load(self) -> None:
         async with connection():
-            await asyncio.gather(*[self._get_item(key) for key in super().values])
+            await asyncio.gather(*[self._get_item(key) for key in self._cache.keys()])
 
     @property
-    def values(self):
-        return self._collection_type(self._cache.values())
+    def values(self) -> Collection[M]:
+        return list(filter(None, self._cache.values()))
 
     @values.setter
-    def values(self, values):
-        self._cache = {v.id: v for v in values if hasattr(v, "id")}
-        keys = self._collection_type(
-            self._cache.keys()
-            if isinstance(values, ModelCollection)
-            else [getattr(v, "id", v) for v in values]
-        )
-        super(ModelCollection, type(self)).values.fset(self, keys)
+    def values(self, values: Collection[M]) -> None:
+        self._cache = {v.id: v for v in values}
 
-    async def _get_item(self, key: int) -> Optional[T]:
-        if key in self._cache:
-            return self._cache[key]
-        value = cast(T, await self._model_class.get(key))
-        self._cache[key] = value
+    async def _get_item(self, key: Key) -> M:
+        value = self._cache.get(key, None)
+        if not value:
+            value = await self._model_class.get(key)
+            self._cache[key] = value
         return value
 
-    def __aiter__(self):
-        self._iter = map(self._get_item, super().values)
+    def __aiter__(self) -> AsyncIterator[M]:
+        self._iter = map(self._get_item, self._cache.keys())
         return self
 
-
-class RedisModelSet(ModelCollection[T], RedisSet):
-    def add(self, value: T) -> None:
-        key = value.id
-        super().add(key)
-        self._cache[key] = value
-
-    def discard(self, value: T) -> None:
-        key = value.id
-        super().discard(key)
-        self._cache.pop(key)
-
-
-class RedisModelList(ModelCollection[T], RedisList):
-    def _get_cached_item(self, key: int):
+    async def __anext__(self) -> M:
         try:
-            return self._cache[key]
-        except KeyError:
-            raise ModelNotLoadedException(
-                f"{self._model_class.__name__} object with id {key} was not loaded"
-            )
+            return await next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
 
-    def insert(self, index: int, value: T) -> None:
-        key = value.id
-        super().insert(index, key)
-        self._cache[key] = value
 
-    def __getitem__(self, i: Union[int, slice]) -> Union[T, Sequence[T]]:
+class RedisModelSet(ModelCollection[M], Set[M], Generic[M]):
+    @property
+    def values(self) -> Set[M]:
+        return set(super().values)
+
+    @values.setter
+    def values(self, values: Collection[M]) -> None:
+        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore
+
+    def add(self, value: M) -> None:
+        self._cache[value.id] = value
+
+    def discard(self, value: M) -> None:
+        self._cache.pop(value.id)
+
+
+class RedisModelList(ModelCollection[M], UserList[M], Generic[M]):
+    @property
+    def values(self) -> List[M]:
+        return list(super().values)
+
+    @values.setter
+    def values(self, values: Collection[T]) -> None:
+        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore
+
+    def _get_cached_item(self, key: Key) -> M:
+        if key in self._cache:
+            value = self._cache[key]
+            if not value:
+                raise ModelNotLoadedException(
+                    f"{self._model_class.__name__} object with id {key!r} was not loaded"
+                )
+            return value
+        else:
+            raise KeyError
+
+    def insert(self, index: int, value: M) -> None:
+        super().insert(index, value)
+        self._cache[value.id] = value
+
+    @overload
+    def __getitem__(self, index: int) -> M:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice) -> MutableSequence[M]:
+        ...
+
+    def __getitem__(self, i: Union[int, slice]) -> Union[M, Sequence[M]]:
         if isinstance(i, slice):
             return [
-                self._get_cached_item(self.values[index])
+                self._get_cached_item(super().__getitem__(index).id)
                 for index in range(*i.indices(len(self)))
             ]
         else:
-            return self._get_cached_item(self.values[i])
+            return self._get_cached_item(super().__getitem__(i).id)
 
-    def __setitem__(self, i: Union[int, slice], o: Union[T, Sequence[T]]) -> None:
-        if isinstance(i, slice) and isinstance(o, Sequence):
+    @overload
+    def __setitem__(self, index: int, o: M) -> None:
+        ...
+
+    @overload
+    def __setitem__(self, index: slice, o: Iterable[M]) -> None:
+        ...
+
+    def __setitem__(self, i: Union[int, slice], o: Union[M, Iterable[M]]) -> None:
+        if isinstance(i, slice) and isinstance(o, SupportsIndex):
             for obj_index, index in enumerate(range(*i.indices(len(self)))):
                 self.insert(index, o[obj_index])
-        elif not isinstance(i, slice) and not isinstance(o, Sequence):
+        elif not isinstance(i, slice) and not isinstance(o, Iterable):
             self.insert(i, o)
         else:
             raise ValueError
 
-    def __delitem__(self, i: int) -> None:
-        key = self.values[i]
+    def __delitem__(self, i: Union[int, slice]) -> None:
+        if isinstance(i, slice):
+            for index in range(*i.indices(len(self))):
+                del self._cache[super().__getitem__(index).id]
+        else:
+            del self._cache[super().__getitem__(i).id]
         super().__delitem__(i)
-        del self._cache[key]
