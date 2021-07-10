@@ -10,12 +10,14 @@ class ForTesting(Model):
 
 
 class ModelTestCase(TestCase):
-    def setUpClass():
+    @classmethod
+    def setUpClass(cls):
         ModelTestCase.redis_await = Redis.__await__
         # Redis & ContextRedis are awaitable, asynctest will try to yield from them
         delattr(Redis, "__await__")
 
-    def tearDownClass():
+    @classmethod
+    def tearDownClass(cls):
         setattr(Redis, "__await__", ModelTestCase.redis_await)
 
     async def setUp(self):
