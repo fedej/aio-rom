@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 from dataclasses import dataclass, field, fields, replace
@@ -13,30 +11,27 @@ from typing import (
     List,
     Tuple,
     Type,
-    TypeVar,
     Union,
     cast,
 )
 
+from .types import Key, RedisValue, M
 from .exception import ModelNotFoundException
-from .attributes import Key, RedisValue
 from .fields import deserialize, is_cascade, is_transient, serialize, update_field
 from .session import connection, transaction
 
 _logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound="Model")
 
-
-class ModelDataclassType(type, Generic[T]):
+class ModelDataclassType(type, Generic[M]):
     def __new__(
-        cls, name: str, bases: Tuple[type, ...], namespace: Dict[str, Any]
-    ) -> ModelDataclassType[T]:
+        mcs, name: str, bases: Tuple[type, ...], namespace: Dict[str, Any]
+    ) -> "ModelDataclassType[M]":
         for field_name, field_type in namespace.get("__annotations__", {}).items():
             update_field(field_name, field_type, namespace)
 
-        model_class: Type[T] = dataclass(unsafe_hash=True)(
-            cast(type, super().__new__(cls, name, bases, namespace))
+        model_class: Type[M] = dataclass(unsafe_hash=True)(
+            cast(type, super().__new__(mcs, name, bases, namespace))
         )
         setattr(
             model_class,
@@ -47,21 +42,21 @@ class ModelDataclassType(type, Generic[T]):
 
 
 class Model(metaclass=ModelDataclassType):
-    id: int = field(init=True, repr=False, compare=False)
+    id: Key = field(init=True, repr=False, compare=False)
 
     @classmethod
     def prefix(cls) -> str:
         return f"{cls.__name__.lower()}"
 
     @classmethod
-    async def get(cls: Type[T], id: Key) -> T:
+    async def get(cls: Type[M], id: Key) -> M:
         async with connection() as conn:
             db_item = cast(
-                Dict[str, RedisValue], await conn.hgetall(f"{cls.prefix()}:{id!r}")
+                Dict[str, RedisValue], await conn.hgetall(f"{cls.prefix()}:{str(id)}")
             )
 
         if not db_item:
-            raise cls.NotFoundException(f"{id} not found")  # type: ignore
+            raise cls.NotFoundException(f"{str(id)} not found")  # type: ignore
 
         model_fields = [f for f in fields(cls) if not is_transient(f)]
         deserialized = await asyncio.gather(
@@ -74,7 +69,7 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    def from_dict(cls: Type[T], model: Dict[str, Any], strict: bool = True) -> T:
+    def from_dict(cls: Type[M], model: Dict[str, Any], strict: bool = True) -> M:
         parameters = signature(cls).parameters
         return (
             cls(**{k: v for k, v in model.items() if k in parameters})  # type: ignore
@@ -83,7 +78,7 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def scan(cls: Type[T], **kwargs: Union[str, int]) -> AsyncIterator[T]:
+    async def scan(cls: Type[M], **kwargs: Union[str, int]) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
             async for key in conn.isscan(cls.prefix(), **kwargs):
@@ -96,7 +91,7 @@ class Model(metaclass=ModelDataclassType):
                         _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @classmethod
-    async def all(cls: Type[T]) -> List[T]:
+    async def all(cls: Type[M]) -> List[M]:
         async with connection() as conn:
             keys = await conn.smembers(cls.prefix())
             return await asyncio.gather(*[cls.get(key) for key in keys])
@@ -112,20 +107,20 @@ class Model(metaclass=ModelDataclassType):
             return int(await conn.scard(cls.prefix()))
 
     @classmethod
-    async def delete_all(cls: Type[T]) -> None:
+    async def delete_all(cls: Type[M]) -> None:
         key_prefix = cls.prefix()
         async with connection() as conn:
             keys = await conn.keys(f"{key_prefix}:*")
             await conn.delete(key_prefix, *keys)
 
     @classmethod
-    async def persisted(cls: Type[T], id: int) -> bool:
+    async def persisted(cls: Type[M], id: int) -> bool:
         async with connection() as conn:
             return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
     @property
     def db_id(self) -> str:
-        return f"{self.prefix()}:{self.id}"
+        return f"{self.prefix()}:{str(self.id)}"
 
     async def save(self, optimistic: bool = False) -> None:
         async with transaction() as tr:
@@ -133,7 +128,7 @@ class Model(metaclass=ModelDataclassType):
             tr.hmset_dict(self.db_id, model_dict)
             tr.sadd(self.prefix(), self.id)
 
-    async def update(self: T, optimistic: bool = False, **changes: Any) -> T:
+    async def update(self: M, optimistic: bool = False, **changes: Any) -> M:
         async with transaction() as tr:
             model_dict = await self._serialized_model(optimistic, **changes)
             for key, value in model_dict.items():
@@ -141,7 +136,7 @@ class Model(metaclass=ModelDataclassType):
             return replace(self, **changes)
 
     async def _serialized_model(
-        self: T, optimistic: bool, **changes: Any
+        self: M, optimistic: bool, **changes: Any
     ) -> Dict[str, Any]:
         async with connection() as conn:
             if optimistic:
@@ -191,5 +186,5 @@ class Model(metaclass=ModelDataclassType):
         async with connection() as conn:
             return bool(await conn.exists(self.db_id))
 
-    async def refresh(self: T) -> T:
+    async def refresh(self: M) -> M:
         return await type(self).get(self.id)

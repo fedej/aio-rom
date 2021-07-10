@@ -1,7 +1,16 @@
 import os
 from typing import List, Optional, Set
+from unittest import skipUnless
 
-from asynctest import TestCase, skipUnless
+try:
+    from unittest.async_case import IsolatedAsyncioTestCase as TestCase
+
+    ASYNCTEST = False
+except ImportError:
+    from asynctest import TestCase
+
+    ASYNCTEST = True
+
 from rom import Model, field
 from rom.session import redis_pool
 
@@ -24,13 +33,17 @@ class FooBar(Model):
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
 class RedisIntegrationTestCase(TestCase):
-    async def setUp(self):
+    async def asyncSetUp(self) -> None:
         self.bar = Bar(1, 123, "value", [1, 2, 3])
 
-    async def tearDown(self):
+    async def asyncTearDown(self) -> None:
         await Foo.delete_all()
         await Bar.delete_all()
         await FooBar.delete_all()
+
+    if ASYNCTEST:
+        tearDown = asyncTearDown
+        setUp = asyncSetUp
 
     async def test_save(self):
         await self.bar.save()
@@ -53,7 +66,7 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_get_with_references(self):
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, set([self.bar]))
+        foo = Foo(123, [self.bar], None, {self.bar})
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
@@ -64,15 +77,15 @@ class RedisIntegrationTestCase(TestCase):
 
     async def _test_collection_references(self, test_cascade=False):
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, set([self.bar]))
+        foo = Foo(123, [self.bar], None, {self.bar})
         if not test_cascade:
             await foo.save()
-        foobar = FooBar(321, set([foo]))
+        foobar = FooBar(321, {foo})
         await foobar.save()
 
         gotten_foobar = await FooBar.get(321)
         assert foobar == gotten_foobar
-        assert set([foo]) == gotten_foobar.foos
+        assert {foo} == gotten_foobar.foos
         for gotten_foo in gotten_foobar.foos:
             assert 1 == len(gotten_foo.eager_bars)
             await gotten_foo.lazy_bars.load()
@@ -87,17 +100,17 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_update_collection_references(self):
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, set([self.bar]))
-        foobar = FooBar(321, set([foo]))
+        foo = Foo(123, [self.bar], None, {self.bar})
+        foobar = FooBar(321, {foo})
         await foobar.save()
         refreshed = await foobar.refresh()
-        foo2 = Foo(222, [], None, set([]))
+        foo2 = Foo(222, [], None, set())
         refreshed.foos.add(foo2)
         await refreshed.save()
 
         gotten_foobar = await FooBar.get(321)
         assert refreshed == gotten_foobar
-        assert set([foo, foo2]) == gotten_foobar.foos
+        assert {foo, foo2} == gotten_foobar.foos
 
     async def test_update(self):
         await self.bar.save()
@@ -110,13 +123,13 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_update_reference(self):
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, set([self.bar]))
+        foo = Foo(123, [self.bar], None, {self.bar})
         await foo.save()
 
         bar2 = Bar(2, 123, "otherbar", [1, 2, 3, 4])
         await bar2.save()
 
-        foo = await foo.update(lazy_bars=set([bar2]))
+        foo = await foo.update(lazy_bars={bar2})
         async with redis_pool() as redis:
             lazy_bars = await redis.smembers("foo:123:lazy_bars")
             assert ["2"] == lazy_bars
@@ -152,7 +165,7 @@ class RedisIntegrationTestCase(TestCase):
             assert not await redis.keys("bar*")
 
     async def test_lazy_collection_cascade(self):
-        foo = Foo(123, [self.bar], None, set([self.bar]))
+        foo = Foo(123, [self.bar], None, {self.bar})
         await foo.save()
         foo = await Foo.get(123)
         other_bar = Bar(2, 124, "value2", [])
