@@ -72,9 +72,9 @@ class Model(metaclass=ModelDataclassType):
     def from_dict(cls: Type[M], model: Dict[str, Any], strict: bool = True) -> M:
         parameters = signature(cls).parameters
         return (
-            cls(**{k: v for k, v in model.items() if k in parameters})  # type: ignore
+            cls(**{k: v for k, v in model.items() if k in parameters})
             if strict
-            else cls(**model)  # type: ignore
+            else cls(**model)
         )
 
     @classmethod
