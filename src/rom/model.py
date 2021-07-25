@@ -1,6 +1,7 @@
 import asyncio
+import dataclasses
 import logging
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import field, fields, replace
 from inspect import iscoroutinefunction, signature
 from typing import (
     Any,
@@ -12,7 +13,7 @@ from typing import (
     Tuple,
     Type,
     Union,
-    cast,
+    cast, Mapping,
 )
 
 from .types import Key, RedisValue, M
@@ -24,23 +25,48 @@ _logger = logging.getLogger(__name__)
 
 
 class ModelDataclassType(type, Generic[M]):
+    @classmethod
+    def __prepare__(mcs, name: str, bases: Tuple[type, ...], **kwds: Any) -> Mapping[str, Any]:
+        ns = super().__prepare__(name, bases)
+        return {
+            "NotFoundException": type(
+                "NotFoundException", (ModelNotFoundException,), {}
+            ),
+            **ns,
+        }
+
     def __new__(
-        mcs, name: str, bases: Tuple[type, ...], namespace: Dict[str, Any]
+        mcs,
+        name: str,
+        bases: Tuple[type, ...],
+        namespace: Dict[str, Any],
+        init: bool = True,
+        repr: bool = True,
+        eq: bool = True,
+        order: bool = False,
+        unsafe_hash: bool = False,
+        frozen: bool = False,
     ) -> "ModelDataclassType[M]":
+        new_namespace = namespace.copy()
         for field_name, field_type in namespace.get("__annotations__", {}).items():
-            update_field(field_name, field_type, namespace)
+            update_field(field_name, field_type, new_namespace)
 
-        model_class: Type[M] = dataclass(unsafe_hash=True)(
-            cast(type, super().__new__(mcs, name, bases, namespace))
+        cls = cast(Type[M], super().__new__(mcs, name, bases, new_namespace))
+        return (
+            dataclasses.dataclass(
+                init=init,
+                repr=repr,
+                eq=eq,
+                order=order,
+                unsafe_hash=unsafe_hash,
+                frozen=frozen,
+            )(cls)
+            if not dataclasses.is_dataclass(cls)
+            else cls
         )
-        setattr(
-            model_class,
-            "NotFoundException",
-            type("NotFoundException", (ModelNotFoundException,), {}),
-        )
-        return model_class
 
 
+@dataclasses.dataclass
 class Model(metaclass=ModelDataclassType):
     id: Key = field(init=True, repr=False, compare=False)
 

@@ -9,15 +9,16 @@ if sys.version_info >= (3, 8):
 
     ASYNCTEST = False
 else:
-    from asynctest import TestCase
-    from asynctest.mock import MagicMock, CoroutineMock, patch
+    from asynctest import TestCase  # type: ignore
+    from asynctest.mock import MagicMock, CoroutineMock, patch  # type: ignore
 
     ASYNCTEST = True
 
-from rom import Model
+from rom import dataclasses, Model
 from rom.exception import ModelNotFoundException
 
 
+@dataclasses.dataclass
 class ForTesting(Model):
     f1: int
 

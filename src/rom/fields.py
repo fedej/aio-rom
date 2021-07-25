@@ -28,7 +28,6 @@ from .attributes import (
     RedisModelList,
     RedisModelSet,
     RedisSet,
-    Key,
 )
 from .types import (
     Deserializer,
@@ -38,6 +37,7 @@ from .types import (
     RedisValue,
     Deserialized,
     M,
+    Key,
 )
 
 
@@ -68,20 +68,6 @@ def is_optional(dataclass_field: Field[F]) -> bool:
 
 def is_model(model: object) -> bool:
     return is_dataclass(model) and hasattr(model, "prefix")
-
-
-def field(
-    transient: bool = False, cascade: bool = False, eager: bool = False, **kwargs: Any
-) -> F:
-    metadata: Metadata = kwargs.pop("metadata", {})
-    metadata.update(
-        {
-            "transient": transient,
-            "cascade": cascade,
-            "eager": eager,
-        }
-    )
-    return cast(F, dc_field(metadata=metadata, **kwargs))
 
 
 def _deserialize_reference(

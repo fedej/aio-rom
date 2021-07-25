@@ -1,12 +1,14 @@
 import asyncio
 import os
+from dataclasses import field
 from typing import List, Callable, Awaitable, Any
 from unittest import TestCase, skipUnless
 
 import pytest
-from pytest_benchmark.fixture import BenchmarkFixture
-from rom import Model, field
+from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore
+from rom import Model
 from rom.session import connection
+from rom.fields import Metadata
 
 
 class Bar(Model):
@@ -16,7 +18,9 @@ class Bar(Model):
 
 
 class Foo(Model):
-    bars: List[Bar] = field(eager=True, cascade=True, default_factory=list)
+    bars: List[Bar] = field(
+        metadata=Metadata(eager=True, cascade=True), default_factory=list
+    )
 
 
 @skipUnless(os.environ.get("CI"), "Redis benchmark CI test only")

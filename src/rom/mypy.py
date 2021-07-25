@@ -4,6 +4,7 @@ from typing import (
     Type as TypingType,
 )
 
+from mypy.nodes import ClassDef, SymbolTableNode, NameExpr, TypeInfo
 from mypy.plugin import (
     ClassDefContext,
     Plugin,
@@ -20,11 +21,29 @@ def plugin(version: str) -> TypingType[Plugin]:
 
 
 class AioRomPlugin(Plugin):
+    @staticmethod
+    def transform(ctx: ClassDefContext) -> None:
+        cls: ClassDef = ctx.cls
+        if not cls.base_type_exprs or not any(
+            [
+                expr.fullname == MODEL_FULLNAME
+                for expr in cls.base_type_exprs
+                if isinstance(expr, NameExpr)
+            ]
+        ):
+            node = ctx.api.lookup_fully_qualified("rom.Model").node
+            if node and isinstance(node, TypeInfo):
+                if cls.info.mro:
+                    cls.info.mro = cls.info.mro[:-1] + [node] + [cls.info.mro[-1]]
+                else:
+                    cls.info.mro = [node]
+        dataclasses.dataclass_class_maker_callback(ctx)
+
     def get_class_decorator_hook(
         self, fullname: str
     ) -> Optional[Callable[[ClassDefContext], None]]:
         if fullname == DATACLASS_FULLNAME:
-            return dataclasses.dataclass_class_maker_callback
+            return AioRomPlugin.transform
         return None
 
     def get_base_class_hook(

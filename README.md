@@ -19,28 +19,34 @@ TODO
 
 ```python
 import asyncio
-from typing import Set
+
+from dataclasses import field
+from typing import Set, Dict
 
 import rom
+from rom.fields import Metadata
+from rom.dataclasses import dataclass
 
-# Library will wrap the class into a dataclass and detect fields from that
+
+@dataclass
 class Foo(rom.Model):
     bar: int
-    foobar: Set[int] = rom.field(default_factory=set)
+    foobar: Set[int] = field(default_factory=set)
     my_boolean: bool = False
-    transient_field: Dict = rom.field(transient=True)
+    transient_field: Dict = field(metadata=Metadata(transient=True))
 
+@dataclass
 class OtherFoo(rom.Model):
     foo: Foo
 
 async def main():
-    await rom.init("redis://localhost")
-    foo = Foo(123, {1,2,3}, True)
-    await foo.save()
-    ...
-    foo2 = await Foo.get(321)
-    other_foo = OtherFoo(303, foo2)
-    await other_foo.save()
+    async with rom.session.redis_pool("redis://localhost"):
+        foo = Foo(123, {1,2,3}, True)
+        await foo.save()
+        ...
+        foo2 = await Foo.get(321)
+        other_foo = OtherFoo(303, foo2, foo)
+        await other_foo.save()
 
 asyncio.run(main())
 ```
@@ -50,11 +56,9 @@ TODO
 ## TODO
 1. Docs
 1. Tests
-1. Pypi
-1. Update specific model fields
 
 ## Limitations
-1. `init` must be called before other calls to Redis can succeed, no defaults to localhost atm.
+1. `configure` must be called before other calls to Redis can succeed, no defaults to localhost atm.
 1. You cannot use `from __future__ import annotations` in the same file you define your models. See https://bugs.python.org/issue39442
 1. TODO Supported datatypes
 1. Probably more ...
