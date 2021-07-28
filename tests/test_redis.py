@@ -1,17 +1,17 @@
 import os
+import sys
 from dataclasses import field
 from typing import List, Optional, Set, cast
 from unittest import skipUnless
 
 from rom import Model
 from rom.attributes import RedisModelSet
-from rom.dataclasses import dataclass
 
-try:
-    from unittest.async_case import IsolatedAsyncioTestCase as TestCase  # type: ignore
+if sys.version_info >= (3, 8):
+    from unittest.async_case import IsolatedAsyncioTestCase as TestCase
 
     ASYNCTEST = False
-except ImportError:
+else:
     from asynctest import TestCase  # type: ignore
 
     ASYNCTEST = True
@@ -20,27 +20,24 @@ from rom.fields import Metadata
 from rom.session import redis_pool
 
 
-@dataclass
-class Bar:
+class Bar(Model, unsafe_hash=True):
     field1: int
     field2: str
     field3: List[int] = field(metadata=Metadata(eager=True), hash=False)
 
 
-@dataclass
-class Foo(Model):
+class Foo(Model, unsafe_hash=True):
     eager_bars: List[Bar] = field(metadata=Metadata(eager=True), hash=False)
     lazy_bars: Set[Bar] = field(compare=False, metadata=Metadata(cascade=True))
     f1: Optional[str] = None
 
 
-@dataclass
 class FooBar(Model):
     foos: Set[Foo] = field(metadata=Metadata(cascade=True, eager=True))
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
-class RedisIntegrationTestCase(TestCase):
+class RedisIntegrationTestCase(TestCase):  # type: ignore
     async def asyncSetUp(self) -> None:
         self.bar = Bar(1, 123, "value", [1, 2, 3])
 

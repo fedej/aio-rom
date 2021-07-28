@@ -8,12 +8,13 @@ from typing import (
     AsyncIterator,
     Collection,
     Dict,
-    Generic,
     List,
     Tuple,
     Type,
     Union,
-    cast, Mapping,
+    cast,
+    Mapping,
+    Generic,
 )
 
 from .types import Key, RedisValue, M
@@ -26,7 +27,9 @@ _logger = logging.getLogger(__name__)
 
 class ModelDataclassType(type, Generic[M]):
     @classmethod
-    def __prepare__(mcs, name: str, bases: Tuple[type, ...], **kwds: Any) -> Mapping[str, Any]:
+    def __prepare__(  # type: ignore
+        mcs, name: str, bases: Tuple[type, ...], **kwds: Any
+    ) -> Mapping[str, Any]:
         ns = super().__prepare__(name, bases)
         return {
             "NotFoundException": type(
@@ -52,21 +55,15 @@ class ModelDataclassType(type, Generic[M]):
             update_field(field_name, field_type, new_namespace)
 
         cls = cast(Type[M], super().__new__(mcs, name, bases, new_namespace))
-        return (
-            dataclasses.dataclass(
-                init=init,
-                repr=repr,
-                eq=eq,
-                order=order,
-                unsafe_hash=unsafe_hash,
-                frozen=frozen,
-            )(cls)
-            if not dataclasses.is_dataclass(cls)
-            else cls
-        )
+        return dataclasses.dataclass(
+            init=init,
+            repr=repr,
+            eq=eq,
+            order=order,
+            unsafe_hash=unsafe_hash,
+        )(cls)
 
 
-@dataclasses.dataclass
 class Model(metaclass=ModelDataclassType):
     id: Key = field(init=True, repr=False, compare=False)
 
@@ -77,12 +74,12 @@ class Model(metaclass=ModelDataclassType):
     @classmethod
     async def get(cls: Type[M], id: Key) -> M:
         async with connection() as conn:
-            db_item = cast(
-                Dict[str, RedisValue], await conn.hgetall(f"{cls.prefix()}:{str(id)}")
+            db_item: Dict[str, RedisValue] = await conn.hgetall(
+                f"{cls.prefix()}:{str(id)}"
             )
 
         if not db_item:
-            raise cls.NotFoundException(f"{str(id)} not found")  # type: ignore
+            raise cls.NotFoundException(f"{str(id)} not found")
 
         model_fields = [f for f in fields(cls) if not is_transient(f)]
         deserialized = await asyncio.gather(

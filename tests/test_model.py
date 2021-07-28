@@ -14,16 +14,15 @@ else:
 
     ASYNCTEST = True
 
-from rom import dataclasses, Model
+from rom import Model
 from rom.exception import ModelNotFoundException
 
 
-@dataclasses.dataclass
 class ForTesting(Model):
     f1: int
 
 
-class ModelTestCase(TestCase):
+class ModelTestCase(TestCase):  # type: ignore
     @classmethod
     def setUpClass(cls) -> None:
         ModelTestCase.redis_await = Redis.__await__
