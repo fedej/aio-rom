@@ -5,7 +5,6 @@ from asyncio.coroutines import iscoroutine
 from collections.abc import MutableSequence
 from dataclasses import Field
 from dataclasses import field as dc_field
-from dataclasses import is_dataclass
 from functools import partial
 from types import MappingProxyType
 from typing import (
@@ -20,7 +19,7 @@ from typing import (
     cast,
 )
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, TypeGuard
 from typing_extensions import get_args, get_origin
 
 from .attributes import (
@@ -28,7 +27,7 @@ from .attributes import (
     RedisModelList,
     RedisModelSet,
     RedisSet,
-    Key,
+    is_model,
 )
 from .types import (
     Deserializer,
@@ -38,6 +37,7 @@ from .types import (
     RedisValue,
     Deserialized,
     M,
+    Key,
 )
 
 
@@ -66,22 +66,8 @@ def is_optional(dataclass_field: Field[F]) -> bool:
     return dataclass_field.metadata.get("optional", False)
 
 
-def is_model(model: object) -> bool:
-    return is_dataclass(model) and hasattr(model, "prefix")
-
-
-def field(
-    transient: bool = False, cascade: bool = False, eager: bool = False, **kwargs: Any
-) -> F:
-    metadata: Metadata = kwargs.pop("metadata", {})
-    metadata.update(
-        {
-            "transient": transient,
-            "cascade": cascade,
-            "eager": eager,
-        }
-    )
-    return cast(F, dc_field(metadata=metadata, **kwargs))
+def is_model_type(model_type: Type[Any]) -> TypeGuard[Type[M]]:
+    return is_model(model_type) and isinstance(model_type, type)
 
 
 def _deserialize_reference(
@@ -114,17 +100,18 @@ async def deserialize(
         raise TypeError(f"Value missing for required field {dataclass_field.name}")
 
 
+def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
+    return iscoroutine(val)
+
+
 async def serialize(dataclass_field: Field[F], key: str, value: F) -> Serializable:
     metadata = cast(Metadata, dataclass_field.metadata)
     serializer = metadata["serializer"]
     val = serializer(key, value)
-    if iscoroutine(val):
-        return await cast(Awaitable[Serializable], val)
-    else:
-        return cast(Serializable, val)
+    return await val if _is_coroutine_serializable(val) else cast(Serializable, val)
 
 
-def pass_through_serializer(key: str, value: F) -> F:
+def pass_through_serializer(_: str, value: F) -> F:
     return value
 
 
@@ -148,20 +135,20 @@ def update_field(
     origin = get_origin(field_type) or field_type
     type_args = get_args(field_type)
 
-    deserializer: Deserializer[Union[M, F]] = json.loads
+    deserializer: Union[Deserializer[M], Deserializer[F]] = json.loads
     serializer: Serializer[F] = lambda key, value: json.dumps(value)
 
     if isinstance(field_type, type) and issubclass(field_type, str):
         deserializer = pass_through_deserializer
         serializer = pass_through_serializer
-    elif isinstance(field_type, cast(Type[M], type)) and is_model(field_type):
-        deserializer = _deserialize_reference(field_type)
+    elif is_model_type(field_type):
+        deserializer = cast(Deserializer[M], _deserialize_reference(field_type))
         serializer = pass_through_serializer
 
     if isinstance(origin, type):
         if issubclass(origin, AbstractSet):
             model_class = type_args[0]
-            if is_model(model_class):
+            if is_model_type(model_class):
                 deserializer = cast(
                     Callable[[], F],
                     partial(
@@ -212,7 +199,7 @@ def update_field(
                 )
                 serializer = RedisList
 
-    metadata = cast(Metadata, dict(dataclass_field.metadata))
+    metadata = cast(Metadata, dict(dataclass_field.metadata)).copy()
     metadata.update(
         {
             "deserializer": deserializer,

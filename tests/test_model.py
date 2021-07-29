@@ -1,6 +1,19 @@
-from aioredis import Redis
-from asynctest import CoroutineMock, MagicMock, TestCase
-from asynctest.mock import patch
+import sys
+
+from aioredis import Redis  # type: ignore
+
+
+if sys.version_info >= (3, 8):
+    from unittest.async_case import IsolatedAsyncioTestCase as TestCase
+    from unittest.mock import AsyncMock as CoroutineMock, MagicMock, patch
+
+    ASYNCTEST = False
+else:
+    from asynctest import TestCase  # type: ignore
+    from asynctest.mock import MagicMock, CoroutineMock, patch  # type: ignore
+
+    ASYNCTEST = True
+
 from rom import Model
 from rom.exception import ModelNotFoundException
 
@@ -9,18 +22,18 @@ class ForTesting(Model):
     f1: int
 
 
-class ModelTestCase(TestCase):
+class ModelTestCase(TestCase):  # type: ignore
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         ModelTestCase.redis_await = Redis.__await__
         # Redis & ContextRedis are awaitable, asynctest will try to yield from them
         delattr(Redis, "__await__")
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         setattr(Redis, "__await__", ModelTestCase.redis_await)
 
-    async def setUp(self):
+    async def asyncSetUp(self) -> None:
         self.mock_redis_transaction = MagicMock(spec=Redis)
         self.mock_redis_transaction.execute.side_effect = CoroutineMock(spec=Redis)
         self.mock_redis_client = MagicMock(spec=Redis)
@@ -37,24 +50,28 @@ class ModelTestCase(TestCase):
             self.mock_redis_client
         )
 
-    async def tearDown(self):
+    async def asyncTearDown(self) -> None:
         patch.stopall()
 
-    async def test_save(self):
+    if ASYNCTEST:
+        tearDown = asyncTearDown
+        setUp = asyncSetUp
+
+    async def test_save(self) -> None:
         await ForTesting(123, 123).save()
         self.mock_redis_transaction.hmset_dict.assert_called_with(
             "fortesting:123", {"id": "123", "f1": "123"}
         )
         self.mock_redis_transaction.sadd.assert_called_with("fortesting", 123)
 
-    async def test_update(self):
+    async def test_update(self) -> None:
         await ForTesting(123, 123).update(f1=987)
         self.mock_redis_transaction.hset.assert_called_once_with(
             "fortesting:123", "f1", "987"
         )
         self.mock_redis_transaction.sadd.assert_not_called()
 
-    async def test_get(self):
+    async def test_get(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             return_value={"id": "123", "f1": "123"}
         )
@@ -63,11 +80,12 @@ class ModelTestCase(TestCase):
         assert 123 == value.f1
         assert ForTesting(123, 123) == value
 
-    async def test_failed_get(self):
+    async def test_failed_get(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(return_value=None)
-        await self.assertAsyncRaises(ModelNotFoundException, ForTesting.get(123))
+        with self.assertRaises(ModelNotFoundException):
+            await ForTesting.get(123)
 
-    async def test_scan(self):
+    async def test_scan(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
@@ -81,7 +99,7 @@ class ModelTestCase(TestCase):
             items += 1
         assert 2 == items
 
-    async def test_all(self):
+    async def test_all(self) -> None:
         self.mock_redis_client.smembers.side_effect.return_value = ["123", "124"]
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
@@ -93,11 +111,11 @@ class ModelTestCase(TestCase):
             items += 1
         assert 2 == items
 
-    async def test_count(self):
+    async def test_count(self) -> None:
         self.mock_redis_client.scard.side_effect = CoroutineMock(return_value=10)
         assert 10 == await ForTesting.count()
 
-    async def test_delete(self):
+    async def test_delete(self) -> None:
         self.mock_redis_client.keys.side_effect = CoroutineMock(
             return_value=["fortesting:123:reference"]
         )
@@ -109,7 +127,7 @@ class ModelTestCase(TestCase):
             "fortesting", "fortesting:123"
         )
 
-    async def test_delete_all(self):
+    async def test_delete_all(self) -> None:
         self.mock_redis_client.keys.side_effect = CoroutineMock(
             return_value=["fortesting:1"]
         )
@@ -118,21 +136,21 @@ class ModelTestCase(TestCase):
         await ForTesting.delete_all()
         delete.assert_called_with("fortesting", "fortesting:1")
 
-    async def test_flush(self):
+    async def test_flush(self) -> None:
         self.mock_redis_client.flushdb.side_effect = CoroutineMock()
         await ForTesting.flush()
         self.mock_redis_client.flushdb.assert_called_once()
 
-    async def test_exists(self):
+    async def test_exists(self) -> None:
         self.mock_redis_client.exists.side_effect = CoroutineMock(
             side_effect=[True, False, True, False]
         )
         assert await ForTesting.persisted(1)
         assert not await ForTesting.persisted(1)
-        assert await ForTesting(1, "123").exists()
-        assert not await ForTesting(1, "123").exists()
+        assert await ForTesting(1, 123).exists()
+        assert not await ForTesting(1, 123).exists()
 
-    async def test_refresh(self):
+    async def test_refresh(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             return_value={"id": "123", "f1": "124"}
         )

@@ -1,18 +1,20 @@
 import asyncio
+import dataclasses
 import logging
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import field, fields, replace
 from inspect import iscoroutinefunction, signature
 from typing import (
     Any,
     AsyncIterator,
     Collection,
     Dict,
-    Generic,
     List,
     Tuple,
     Type,
     Union,
     cast,
+    Mapping,
+    Generic,
 )
 
 from .types import Key, RedisValue, M
@@ -24,21 +26,42 @@ _logger = logging.getLogger(__name__)
 
 
 class ModelDataclassType(type, Generic[M]):
-    def __new__(
-        mcs, name: str, bases: Tuple[type, ...], namespace: Dict[str, Any]
-    ) -> "ModelDataclassType[M]":
-        for field_name, field_type in namespace.get("__annotations__", {}).items():
-            update_field(field_name, field_type, namespace)
+    @classmethod
+    def __prepare__(  # type: ignore
+        mcs, name: str, bases: Tuple[type, ...], **kwds: Any
+    ) -> Mapping[str, Any]:
+        ns = super().__prepare__(name, bases)
+        return {
+            "NotFoundException": type(
+                "NotFoundException", (ModelNotFoundException,), {}
+            ),
+            **ns,
+        }
 
-        model_class: Type[M] = dataclass(unsafe_hash=True)(
-            cast(type, super().__new__(mcs, name, bases, namespace))
-        )
-        setattr(
-            model_class,
-            "NotFoundException",
-            type("NotFoundException", (ModelNotFoundException,), {}),
-        )
-        return model_class
+    def __new__(
+        mcs,
+        name: str,
+        bases: Tuple[type, ...],
+        namespace: Dict[str, Any],
+        init: bool = True,
+        repr: bool = True,
+        eq: bool = True,
+        order: bool = False,
+        unsafe_hash: bool = False,
+        frozen: bool = False,
+    ) -> "ModelDataclassType[M]":
+        new_namespace = namespace.copy()
+        for field_name, field_type in namespace.get("__annotations__", {}).items():
+            update_field(field_name, field_type, new_namespace)
+
+        cls = cast(Type[M], super().__new__(mcs, name, bases, new_namespace))
+        return dataclasses.dataclass(
+            init=init,
+            repr=repr,
+            eq=eq,
+            order=order,
+            unsafe_hash=unsafe_hash,
+        )(cls)
 
 
 class Model(metaclass=ModelDataclassType):
@@ -51,12 +74,12 @@ class Model(metaclass=ModelDataclassType):
     @classmethod
     async def get(cls: Type[M], id: Key) -> M:
         async with connection() as conn:
-            db_item = cast(
-                Dict[str, RedisValue], await conn.hgetall(f"{cls.prefix()}:{str(id)}")
+            db_item: Dict[str, RedisValue] = await conn.hgetall(
+                f"{cls.prefix()}:{str(id)}"
             )
 
         if not db_item:
-            raise cls.NotFoundException(f"{str(id)} not found")  # type: ignore
+            raise cls.NotFoundException(f"{str(id)} not found")
 
         model_fields = [f for f in fields(cls) if not is_transient(f)]
         deserialized = await asyncio.gather(
@@ -72,9 +95,9 @@ class Model(metaclass=ModelDataclassType):
     def from_dict(cls: Type[M], model: Dict[str, Any], strict: bool = True) -> M:
         parameters = signature(cls).parameters
         return (
-            cls(**{k: v for k, v in model.items() if k in parameters})  # type: ignore
+            cls(**{k: v for k, v in model.items() if k in parameters})
             if strict
-            else cls(**model)  # type: ignore
+            else cls(**model)
         )
 
     @classmethod

@@ -1,38 +1,43 @@
 import os
-from typing import List, Optional, Set
+import sys
+from dataclasses import field
+from typing import List, Optional, Set, cast
 from unittest import skipUnless
 
-try:
+from rom import Model
+from rom.attributes import RedisModelSet
+
+if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
 
     ASYNCTEST = False
-except ImportError:
-    from asynctest import TestCase
+else:
+    from asynctest import TestCase  # type: ignore
 
     ASYNCTEST = True
 
-from rom import Model, field
+from rom.fields import Metadata
 from rom.session import redis_pool
 
 
-class Bar(Model):
+class Bar(Model, unsafe_hash=True):
     field1: int
     field2: str
-    field3: List[int] = field(eager=True, hash=False)
+    field3: List[int] = field(metadata=Metadata(eager=True), hash=False)
 
 
-class Foo(Model):
-    eager_bars: List[Bar] = field(eager=True, hash=False)
+class Foo(Model, unsafe_hash=True):
+    eager_bars: List[Bar] = field(metadata=Metadata(eager=True), hash=False)
+    lazy_bars: Set[Bar] = field(compare=False, metadata=Metadata(cascade=True))
     f1: Optional[str] = None
-    lazy_bars: Set[Bar] = field(compare=False, cascade=True)
 
 
 class FooBar(Model):
-    foos: Set[Foo] = field(eager=True, cascade=True)
+    foos: Set[Foo] = field(metadata=Metadata(cascade=True, eager=True))
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
-class RedisIntegrationTestCase(TestCase):
+class RedisIntegrationTestCase(TestCase):  # type: ignore
     async def asyncSetUp(self) -> None:
         self.bar = Bar(1, 123, "value", [1, 2, 3])
 
@@ -45,7 +50,7 @@ class RedisIntegrationTestCase(TestCase):
         tearDown = asyncTearDown
         setUp = asyncSetUp
 
-    async def test_save(self):
+    async def test_save(self) -> None:
         await self.bar.save()
 
         async with redis_pool() as redis:
@@ -59,25 +64,25 @@ class RedisIntegrationTestCase(TestCase):
         assert "bar:1:field3" == field3
         assert ["1", "2", "3"] == field3_value
 
-    async def test_get(self):
+    async def test_get(self) -> None:
         await self.bar.save()
         bar = await Bar.get(1)
         assert self.bar == bar
 
-    async def test_get_with_references(self):
+    async def test_get_with_references(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, {self.bar})
+        foo = Foo(123, [self.bar], {self.bar}, None)
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
-        await gotten_foo.lazy_bars.load()
+        await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
         for bar in gotten_foo.lazy_bars:
             assert bar in foo.lazy_bars
         assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
 
-    async def _test_collection_references(self, test_cascade=False):
+    async def _test_collection_references(self, test_cascade: bool = False) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, {self.bar})
+        foo = Foo(123, [self.bar], {self.bar}, None)
         if not test_cascade:
             await foo.save()
         foobar = FooBar(321, {foo})
@@ -88,23 +93,23 @@ class RedisIntegrationTestCase(TestCase):
         assert {foo} == gotten_foobar.foos
         for gotten_foo in gotten_foobar.foos:
             assert 1 == len(gotten_foo.eager_bars)
-            await gotten_foo.lazy_bars.load()
+            await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
             for bar in gotten_foo.lazy_bars:
                 assert bar in foo.lazy_bars
 
-    async def test_collections(self):
+    async def test_collections(self) -> None:
         await self._test_collection_references()
 
-    async def test_collection_cascades_references(self):
+    async def test_collection_cascades_references(self) -> None:
         await self._test_collection_references(test_cascade=True)
 
-    async def test_update_collection_references(self):
+    async def test_update_collection_references(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, {self.bar})
+        foo = Foo(123, [self.bar], {self.bar}, None)
         foobar = FooBar(321, {foo})
         await foobar.save()
         refreshed = await foobar.refresh()
-        foo2 = Foo(222, [], None, set())
+        foo2 = Foo(222, [], set(), None)
         refreshed.foos.add(foo2)
         await refreshed.save()
 
@@ -112,7 +117,7 @@ class RedisIntegrationTestCase(TestCase):
         assert refreshed == gotten_foobar
         assert {foo, foo2} == gotten_foobar.foos
 
-    async def test_update(self):
+    async def test_update(self) -> None:
         await self.bar.save()
         await self.bar.update(field2="updated")
         async with redis_pool() as redis:
@@ -121,9 +126,9 @@ class RedisIntegrationTestCase(TestCase):
         bar = await Bar.get(1)
         assert "updated" == bar.field2
 
-    async def test_update_reference(self):
+    async def test_update_reference(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], None, {self.bar})
+        foo = Foo(123, [self.bar], {self.bar}, None)
         await foo.save()
 
         bar2 = Bar(2, 123, "otherbar", [1, 2, 3, 4])
@@ -142,7 +147,7 @@ class RedisIntegrationTestCase(TestCase):
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
 
-    async def test_save_again_overrides_previous(self):
+    async def test_save_again_overrides_previous(self) -> None:
         await self.bar.save()
         bar = await Bar.get(1)
         bar.field2 = "updated"
@@ -151,21 +156,21 @@ class RedisIntegrationTestCase(TestCase):
             field2 = await redis.hget("bar:1", "field2")
         assert "updated" == field2
 
-    async def test_delete(self):
+    async def test_delete(self) -> None:
         await self.bar.save()
         async with redis_pool() as redis:
             assert await redis.exists("bar:1")
             await self.bar.delete()
             assert not await redis.exists("bar:1")
 
-    async def test_delete_all(self):
+    async def test_delete_all(self) -> None:
         await self.bar.save()
         async with redis_pool() as redis:
             await Bar.delete_all()
             assert not await redis.keys("bar*")
 
-    async def test_lazy_collection_cascade(self):
-        foo = Foo(123, [self.bar], None, {self.bar})
+    async def test_lazy_collection_cascade(self) -> None:
+        foo = Foo(123, [self.bar], {self.bar}, None)
         await foo.save()
         foo = await Foo.get(123)
         other_bar = Bar(2, 124, "value2", [])
@@ -173,6 +178,6 @@ class RedisIntegrationTestCase(TestCase):
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
-        await gotten_foo.lazy_bars.load()
-        await foo.lazy_bars.load()
+        await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
+        await cast(RedisModelSet[Bar], foo.lazy_bars).load()
         assert 2 == len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
