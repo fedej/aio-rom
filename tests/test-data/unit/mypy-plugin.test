@@ -1,0 +1,18 @@
+[case testModelIsDataClass]
+# flags: --strict
+from typing import Optional
+
+from rom import Model
+
+class User(Model):
+    name: str
+
+oi: Optional[int]
+
+User(1)  # E: Missing positional argument "name" in call to "User"
+User(1, "blah")
+User(1, 2)  # E: Argument 2 to "User" has incompatible type "int"; expected "str"
+User(id=int(), name=str())
+User(id=oi, name="")  # E: Argument "id" to "User" has incompatible type "Optional[int]"; expected "Union[int, Union[str, bytes]]"
+reveal_type(User.NotFoundException)  # N: Revealed type is "Type[rom.exception.ModelNotFoundException]"
+reveal_type(User.NotFoundException())  # N: Revealed type is "rom.exception.ModelNotFoundException"

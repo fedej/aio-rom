@@ -100,7 +100,7 @@ async def deserialize(
         raise TypeError(f"Value missing for required field {dataclass_field.name}")
 
 
-def _is_serializable_awaitable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
+def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
     return iscoroutine(val)
 
 
@@ -108,7 +108,7 @@ async def serialize(dataclass_field: Field[F], key: str, value: F) -> Serializab
     metadata = cast(Metadata, dataclass_field.metadata)
     serializer = metadata["serializer"]
     val = serializer(key, value)
-    return await val if _is_serializable_awaitable(val) else cast(Serializable, val)
+    return await val if _is_coroutine_serializable(val) else cast(Serializable, val)
 
 
 def pass_through_serializer(_: str, value: F) -> F:

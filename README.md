@@ -25,17 +25,15 @@ from typing import Set, Dict
 
 import rom
 from rom.fields import Metadata
-from rom.dataclasses import dataclass
 
 
-@dataclass
 class Foo(rom.Model):
     bar: int
     foobar: Set[int] = field(default_factory=set)
     my_boolean: bool = False
     transient_field: Dict = field(metadata=Metadata(transient=True))
 
-@dataclass
+
 class OtherFoo(rom.Model):
     foo: Foo
 
@@ -45,7 +43,7 @@ async def main():
         await foo.save()
         ...
         foo2 = await Foo.get(321)
-        other_foo = OtherFoo(303, foo2, foo)
+        other_foo = OtherFoo(303, foo2)
         await other_foo.save()
 
 asyncio.run(main())
