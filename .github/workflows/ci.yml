@@ -43,7 +43,7 @@ jobs:
           if-no-files-found: error
       - name: Codecov
         if: ${{ matrix.redis-version == '5' && matrix.python-version == '3.9' }}
-        uses: codecov/codecov-action@v2.0.1
+        uses: codecov/codecov-action@v2.0.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: unittests
