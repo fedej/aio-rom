@@ -1,8 +1,8 @@
-from typing import Union, Awaitable, Callable, Optional, TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar, Union
 
 if TYPE_CHECKING:
-    from .model import Model
     from .attributes import RedisCollection
+    from .model import Model
 
 F = TypeVar("F", str, bool, int, float)
 M = TypeVar("M", bound="Model")

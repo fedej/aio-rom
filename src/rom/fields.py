@@ -19,25 +19,18 @@ from typing import (
     cast,
 )
 
-from typing_extensions import TypedDict, TypeGuard
-from typing_extensions import get_args, get_origin
+from typing_extensions import TypedDict, TypeGuard, get_args, get_origin
 
-from .attributes import (
-    RedisList,
-    RedisModelList,
-    RedisModelSet,
-    RedisSet,
-    is_model,
-)
+from .attributes import RedisList, RedisModelList, RedisModelSet, RedisSet, is_model
 from .types import (
-    Deserializer,
-    Serializer,
-    F,
-    Serializable,
-    RedisValue,
     Deserialized,
-    M,
+    Deserializer,
+    F,
     Key,
+    M,
+    RedisValue,
+    Serializable,
+    Serializer,
 )
 
 

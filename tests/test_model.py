@@ -2,15 +2,15 @@ import sys
 
 from aioredis import Redis  # type: ignore
 
-
 if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
-    from unittest.mock import AsyncMock as CoroutineMock, MagicMock, patch
+    from unittest.mock import AsyncMock as CoroutineMock
+    from unittest.mock import MagicMock, patch
 
     ASYNCTEST = False
 else:
     from asynctest import TestCase  # type: ignore
-    from asynctest.mock import MagicMock, CoroutineMock, patch  # type: ignore
+    from asynctest.mock import CoroutineMock, MagicMock, patch  # type: ignore
 
     ASYNCTEST = True
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mypy import api
 from mypy.test.config import test_temp_dir
-from mypy.test.data import DataSuite, DataDrivenTestCase
+from mypy.test.data import DataDrivenTestCase, DataSuite
 from mypy.test.helpers import assert_string_arrays_equal
 
 current_dir = Path(__file__).parent

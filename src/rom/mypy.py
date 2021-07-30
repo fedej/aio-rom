@@ -1,24 +1,18 @@
-from typing import (
-    Callable,
-    Optional,
-    Type as TypingType,
-)
+from typing import Callable, Optional
+from typing import Type as TypingType
 
 from mypy.nodes import (
+    MDEF,
+    Block,
     ClassDef,
     NameExpr,
-    TypeInfo,
-    Block,
-    SymbolTableNode,
-    MDEF,
-    SymbolTable,
     PassStmt,
+    SymbolTable,
+    SymbolTableNode,
+    TypeInfo,
     Var,
 )
-from mypy.plugin import (
-    ClassDefContext,
-    Plugin,
-)
+from mypy.plugin import ClassDefContext, Plugin
 from mypy.plugins import dataclasses
 from mypy.types import Instance, TypeType
 

@@ -8,19 +8,19 @@ from typing import (
     AsyncIterator,
     Collection,
     Dict,
+    Generic,
     List,
+    Mapping,
     Tuple,
     Type,
     Union,
     cast,
-    Mapping,
-    Generic,
 )
 
-from .types import Key, RedisValue, M
 from .exception import ModelNotFoundException
 from .fields import deserialize, is_cascade, is_transient, serialize, update_field
 from .session import connection, transaction
+from .types import Key, M, RedisValue
 
 _logger = logging.getLogger(__name__)
 

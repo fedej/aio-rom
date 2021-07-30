@@ -1,1 +1,1 @@
-from mypy.test.data import pytest_pycollect_makeitem, pytest_addoption  # NOQA
+from mypy.test.data import pytest_addoption, pytest_pycollect_makeitem  # NOQA

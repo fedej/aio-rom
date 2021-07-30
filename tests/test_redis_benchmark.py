@@ -1,14 +1,15 @@
 import asyncio
 import os
 from dataclasses import field
-from typing import List, Callable, Awaitable, Any
+from typing import Any, Awaitable, Callable, List
 from unittest import TestCase, skipUnless
 
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore
+
 from rom import Model
-from rom.session import connection
 from rom.fields import Metadata
+from rom.session import connection
 
 
 class Bar(Model):

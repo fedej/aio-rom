@@ -3,32 +3,32 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABCMeta, abstractmethod
-
-from aioredis.commands import MultiExec  # type: ignore
-from typing_extensions import SupportsIndex, TypeGuard
 from dataclasses import MISSING, is_dataclass
 from typing import (
     Any,
     AsyncIterator,
+    Callable,
     Collection,
+    Dict,
     Generic,
-    Iterator,
     Iterable,
+    Iterator,
+    List,
     MutableSequence,
-    overload,
+    Optional,
+    Set,
     Type,
     Union,
     cast,
-    Callable,
-    List,
-    Set,
-    Optional,
-    Dict,
+    overload,
 )
+
+from aioredis.commands import MultiExec  # type: ignore
+from typing_extensions import SupportsIndex, TypeGuard
 
 from .exception import ModelNotLoadedException
 from .session import connection, transaction
-from .types import Key, M, C
+from .types import C, Key, M
 
 
 def is_model(model: object) -> TypeGuard[M]:
