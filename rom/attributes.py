@@ -233,7 +233,7 @@ class RedisModelSet(ModelCollection[M], RedisSet[M], Generic[M]):
 
     @values.setter
     def values(self, values: Collection[M]) -> None:
-        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore[attr-defined]
+        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore[attr-defined] # noqa: E501
 
     def add(self, value: M) -> None:
         self._cache[value.id] = value
@@ -249,7 +249,7 @@ class RedisModelList(ModelCollection[M], RedisList[M], Generic[M]):
 
     @values.setter
     def values(self, values: Collection[C]) -> None:
-        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore[attr-defined]
+        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore[attr-defined] # noqa: E501
 
     def _get_cached_item(self, key: Key) -> M:
         if key in self._cache:

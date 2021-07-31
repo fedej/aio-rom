@@ -31,7 +31,7 @@ class ModelTestCase(TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        setattr(Redis, "__await__", ModelTestCase.redis_await)  # type: ignore[attr-defined]
+        setattr(Redis, "__await__", ModelTestCase.redis_await)  # type: ignore[attr-defined] # noqa: E501
 
     async def asyncSetUp(self) -> None:
         self.mock_redis_transaction = MagicMock(spec=Redis)
