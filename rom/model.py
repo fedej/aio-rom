@@ -27,7 +27,7 @@ _logger = logging.getLogger(__name__)
 
 class ModelDataclassType(type, Generic[M]):
     @classmethod
-    def __prepare__(  # type: ignore
+    def __prepare__(  # type: ignore[override]
         mcs, name: str, bases: Tuple[type, ...], **kwds: Any
     ) -> Mapping[str, Any]:
         ns = super().__prepare__(name, bases)

@@ -1,6 +1,6 @@
 import sys
 
-from aioredis import Redis  # type: ignore
+from aioredis import Redis  # type: ignore[import]
 
 if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
@@ -9,8 +9,8 @@ if sys.version_info >= (3, 8):
 
     ASYNCTEST = False
 else:
-    from asynctest import TestCase  # type: ignore
-    from asynctest.mock import CoroutineMock, MagicMock, patch  # type: ignore
+    from asynctest import TestCase
+    from asynctest.mock import CoroutineMock, MagicMock, patch
 
     ASYNCTEST = True
 
@@ -22,16 +22,16 @@ class ForTesting(Model):
     f1: int
 
 
-class ModelTestCase(TestCase):  # type: ignore
+class ModelTestCase(TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ModelTestCase.redis_await = Redis.__await__
+        ModelTestCase.redis_await = Redis.__await__  # type: ignore[attr-defined]
         # Redis & ContextRedis are awaitable, asynctest will try to yield from them
         delattr(Redis, "__await__")
 
     @classmethod
     def tearDownClass(cls) -> None:
-        setattr(Redis, "__await__", ModelTestCase.redis_await)
+        setattr(Redis, "__await__", ModelTestCase.redis_await)  # type: ignore[attr-defined]
 
     async def asyncSetUp(self) -> None:
         self.mock_redis_transaction = MagicMock(spec=Redis)
@@ -54,8 +54,8 @@ class ModelTestCase(TestCase):  # type: ignore
         patch.stopall()
 
     if ASYNCTEST:
-        tearDown = asyncTearDown
-        setUp = asyncSetUp
+        tearDown = asyncTearDown  # type: ignore[assignment]
+        setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
         await ForTesting(123, 123).save()

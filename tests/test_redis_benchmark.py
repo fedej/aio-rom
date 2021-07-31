@@ -5,7 +5,7 @@ from typing import Any, Awaitable, Callable, List
 from unittest import TestCase, skipUnless
 
 import pytest
-from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore
+from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
 
 from rom import Model
 from rom.fields import Metadata

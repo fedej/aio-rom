@@ -23,7 +23,7 @@ from typing import (
     overload,
 )
 
-from aioredis.commands import MultiExec  # type: ignore
+from aioredis.commands import MultiExec  # type: ignore[import]
 from typing_extensions import SupportsIndex, TypeGuard
 
 from .exception import ModelNotLoadedException
@@ -186,7 +186,7 @@ class ModelCollection(RedisCollection[M], AsyncIterator[M], metaclass=ABCMeta):
         )
 
     async def do_save(self, tr: MultiExec, values: Collection[M]) -> None:
-        await super().do_save(tr, list(self._cache.keys()))  # type: ignore
+        await super().do_save(tr, list(self._cache.keys()))  # type: ignore[arg-type]
 
     async def save(self, optimistic: bool = False) -> None:
         async with transaction():
@@ -233,7 +233,7 @@ class RedisModelSet(ModelCollection[M], RedisSet[M], Generic[M]):
 
     @values.setter
     def values(self, values: Collection[M]) -> None:
-        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore
+        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore[attr-defined]
 
     def add(self, value: M) -> None:
         self._cache[value.id] = value
@@ -249,7 +249,7 @@ class RedisModelList(ModelCollection[M], RedisList[M], Generic[M]):
 
     @values.setter
     def values(self, values: Collection[C]) -> None:
-        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore
+        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore[attr-defined]
 
     def _get_cached_item(self, key: Key) -> M:
         if key in self._cache:
