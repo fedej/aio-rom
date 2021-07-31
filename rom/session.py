@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, AsyncIterator, Dict, Optional
 
-from aioredis.commands import ContextRedis, Redis, create_redis_pool  # noqa: E501 type: ignore[import]
+from aioredis.commands import ContextRedis, Redis, create_redis_pool  # type: ignore[import] # noqa: E501
 from aioredis.commands.transaction import MultiExec  # type: ignore[import]
 
 REDIS: ContextVar[Optional[Redis]] = ContextVar("redis", default=None)
