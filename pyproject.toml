@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aio-rom"
-version = "0.1.0"
+version = "0"
 description = "asyncio based Redis object mapper"
 authors = ["Federico Jaite <fede_654_87@hotmail.com>"]
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{include = "rom"}]
 repository = "https://github.com/fedej/aio-rom"
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
@@ -39,6 +39,9 @@ isort = "^5.9.3"
 
 [tool.poetry.extras]
 mypy = ["mypy"]
+
+[tool.poetry-version-plugin]
+source = "git-tag"
 
 [build-system]
 requires = ["poetry-core"]
