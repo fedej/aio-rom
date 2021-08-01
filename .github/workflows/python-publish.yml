@@ -19,7 +19,7 @@ jobs:
         with:
           path: ~/.cache/pypoetry/virtualenvs
           key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
-      - run: curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 --git https://github.com/python-poetry/poetry.git@master
+      - run: curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 - --git https://github.com/python-poetry/poetry.git@master
       - run: $HOME/.local/bin/poetry plugin add poetry-version-plugin
       - run: $HOME/.local/bin/poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
       - run: $HOME/.local/bin/poetry publish --build
