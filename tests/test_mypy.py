@@ -21,7 +21,7 @@ class RomDataSuite(DataSuite):
             "--show-traceback",
             "--no-silence-site-packages",
             "--no-error-summary",
-            f"--config-file={str(current_dir)}/rom.ini",
+            f"--config-file={str(current_dir)}/aio_rom.ini",
         ]
         version = sys.version_info[:2]
         mypy_cmdline.append("--python-version={}".format(".".join(map(str, version))))

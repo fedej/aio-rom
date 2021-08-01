@@ -2,7 +2,7 @@
 # flags: --strict
 from typing import Optional
 
-from rom import Model
+from aio_rom import Model
 
 class User(Model):
     name: str
@@ -14,5 +14,5 @@ User(1, "blah")
 User(1, 2)  # E: Argument 2 to "User" has incompatible type "int"; expected "str"
 User(id=int(), name=str())
 User(id=oi, name="")  # E: Argument "id" to "User" has incompatible type "Optional[int]"; expected "Union[int, Union[str, bytes]]"
-reveal_type(User.NotFoundException)  # N: Revealed type is "Type[rom.exception.ModelNotFoundException]"
-reveal_type(User.NotFoundException())  # N: Revealed type is "rom.exception.ModelNotFoundException"
+reveal_type(User.NotFoundException)  # N: Revealed type is "Type[aio_rom.exception.ModelNotFoundException]"
+reveal_type(User.NotFoundException())  # N: Revealed type is "aio_rom.exception.ModelNotFoundException"

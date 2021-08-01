@@ -14,8 +14,8 @@ else:
 
     ASYNCTEST = True
 
-from rom import Model
-from rom.exception import ModelNotFoundException
+from aio_rom import Model
+from aio_rom.exception import ModelNotFoundException
 
 
 class ForTesting(Model):
@@ -39,12 +39,12 @@ class ModelTestCase(TestCase):
         self.mock_redis_client = MagicMock(spec=Redis)
         self.mock_redis_client.multi_exec.return_value = self.mock_redis_transaction
         self.mock_redis_client.smembers.side_effect = CoroutineMock()
-        self.transaction_patcher = patch("rom.model.transaction")
+        self.transaction_patcher = patch("aio_rom.model.transaction")
         self.transaction_mock = self.transaction_patcher.start()
         self.transaction_mock.return_value.__aenter__.return_value = (
             self.mock_redis_transaction
         )
-        self.connection_patcher = patch("rom.model.connection")
+        self.connection_patcher = patch("aio_rom.model.connection")
         self.connection_mock = self.connection_patcher.start()
         self.connection_mock.return_value.__aenter__.return_value = (
             self.mock_redis_client

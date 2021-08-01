@@ -4,8 +4,8 @@ from dataclasses import field
 from typing import List, Optional, Set, cast
 from unittest import skipUnless
 
-from rom import Model
-from rom.attributes import RedisModelSet
+from aio_rom import Model
+from aio_rom.attributes import RedisModelSet
 
 if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
@@ -16,8 +16,8 @@ else:
 
     ASYNCTEST = True
 
-from rom.fields import Metadata
-from rom.session import redis_pool
+from aio_rom.fields import Metadata
+from aio_rom.session import redis_pool
 
 
 class Bar(Model, unsafe_hash=True):

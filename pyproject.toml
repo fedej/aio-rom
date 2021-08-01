@@ -5,7 +5,7 @@ description = "asyncio based Redis object mapper"
 authors = ["Federico Jaite <fede_654_87@hotmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "rom"}]
+packages = [{include = "aio_rom"}]
 repository = "https://github.com/fedej/aio-rom"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Database :: Front-Ends"
 ]
-include = ["rom/py.typed"]
+include = ["aio_rom/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
@@ -58,7 +58,7 @@ profile = "black"
 relative_files = true
 
 [tool.mypy]
-plugins = "rom.mypy"
+plugins = "aio_rom.mypy"
 
 [tool.tox]
 legacy_tox_ini = """
@@ -88,7 +88,7 @@ deps =
 passenv = CI
 extras = mypy
 setenv = MYPY_TEST_PREFIX = tests
-commands = pytest --cov=rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
 
 [testenv:style]
 deps =
@@ -102,7 +102,7 @@ commands =
 
 [testenv:mypy]
 deps = mypy
-commands = mypy --install-types --non-interactive --strict rom
+commands = mypy --install-types --non-interactive --strict aio_rom
 
 [testenv:clean]
 deps = coverage[toml]

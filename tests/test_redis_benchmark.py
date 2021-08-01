@@ -7,9 +7,9 @@ from unittest import TestCase, skipUnless
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
 
-from rom import Model
-from rom.fields import Metadata
-from rom.session import connection
+from aio_rom import Model
+from aio_rom.fields import Metadata
+from aio_rom.session import connection
 
 
 class Bar(Model):

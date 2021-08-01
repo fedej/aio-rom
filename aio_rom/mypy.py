@@ -16,8 +16,8 @@ from mypy.plugin import ClassDefContext, Plugin
 from mypy.plugins import dataclasses
 from mypy.types import Instance, TypeType
 
-MODEL_DATACLASS_TYPE_FULLNAME = "rom.model.ModelDataclassType"
-MODEL_FULLNAME = "rom.model.Model"
+MODEL_DATACLASS_TYPE_FULLNAME = "aio_rom.model.ModelDataclassType"
+MODEL_FULLNAME = "aio_rom.model.Model"
 
 
 def plugin(_: str) -> TypingType[Plugin]:
@@ -36,7 +36,7 @@ class AioRomPlugin(Plugin):
         not_found_exception_def = ClassDef(
             "NotFoundException",
             Block([PassStmt()]),
-            base_type_exprs=[NameExpr("rom.exception.ModelNotFoundException")],
+            base_type_exprs=[NameExpr("aio_rom.exception.ModelNotFoundException")],
         )
         not_found_exception_def.fullname = f"{cls.fullname}.NotFoundException"
         not_found_class = TypeInfo(
@@ -45,7 +45,7 @@ class AioRomPlugin(Plugin):
             module_name=cls.info.module_name,
         )
         sym = ctx.api.lookup_fully_qualified_or_none(
-            "rom.exception.ModelNotFoundException"
+            "aio_rom.exception.ModelNotFoundException"
         )
         assert sym is not None
         assert isinstance(sym.node, TypeInfo)
