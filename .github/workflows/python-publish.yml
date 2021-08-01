@@ -11,10 +11,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Build and publish to pypi
-      uses: JRubics/poetry-publish@v1.7
-      with:
-        pypi_token: ${{ secrets.PYPI_TOKEN }}
-        ignore_dev_requirements: "yes"
-        poetry_version: "1.2.0a1 --pre"
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+      - uses: Gr1N/setup-poetry@v7
+        with:
+          poetry-version: 1.2.0a1
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+      - run: poetry plugin add poetry-version-plugin
+      - run: poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+      - run: poetry publish --build
