@@ -23,22 +23,23 @@ import asyncio
 from dataclasses import field
 from typing import Set, Dict
 
-import rom
-from rom.fields import Metadata
+from aio_rom import Model
+from aio_rom.fields import Metadata
+from aio_rom.session import redis_pool
 
 
-class Foo(rom.Model):
+class Foo(Model):
     bar: int
     foobar: Set[int] = field(default_factory=set)
     my_boolean: bool = False
     transient_field: Dict = field(metadata=Metadata(transient=True))
 
 
-class OtherFoo(rom.Model):
+class OtherFoo(Model):
     foo: Foo
 
 async def main():
-    async with rom.session.redis_pool("redis://localhost"):
+    async with redis_pool("redis://localhost"):
         foo = Foo(123, {1,2,3}, True)
         await foo.save()
         ...
