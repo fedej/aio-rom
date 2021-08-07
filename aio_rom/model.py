@@ -13,8 +13,9 @@ from typing import (
     Mapping,
     Tuple,
     Type,
-    Union,
     cast,
+    Optional,
+    Union,
 )
 
 from .exception import ModelNotFoundException
@@ -101,10 +102,12 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def scan(cls: Type[M], **kwargs: Union[str, int]) -> AsyncIterator[M]:
+    async def scan(
+        cls: Type[M], **kwargs: Union[Optional[str], Optional[int]]
+    ) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
-            async for key in conn.isscan(cls.prefix(), **kwargs):
+            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type]
                 if key not in found:
                     value = await cls.get(key)
                     if value:
@@ -146,13 +149,15 @@ class Model(metaclass=ModelDataclassType):
         return f"{self.prefix()}:{str(self.id)}"
 
     async def save(self, optimistic: bool = False) -> None:
-        async with transaction() as tr:
+        watch = [self.db_id] if optimistic else []
+        async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic)
-            tr.hmset_dict(self.db_id, model_dict)
-            tr.sadd(self.prefix(), self.id)
+            await tr.hmset(self.db_id, model_dict)
+            await tr.sadd(self.prefix(), self.id)
 
     async def update(self: M, optimistic: bool = False, **changes: Any) -> M:
-        async with transaction() as tr:
+        watch = [self.db_id] if optimistic else []
+        async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic, **changes)
             for key, value in model_dict.items():
                 tr.hset(self.db_id, key, value)
@@ -161,49 +166,45 @@ class Model(metaclass=ModelDataclassType):
     async def _serialized_model(
         self: M, optimistic: bool, **changes: Any
     ) -> Dict[str, Any]:
-        async with connection() as conn:
-            if optimistic:
-                conn.watch(self.db_id)
-            model_fields = {
-                f: changes.get(f.name, getattr(self, f.name))
-                for f in fields(self)
-                if not is_transient(f)
-                and hasattr(self, f.name)
-                and (not changes or f.name in changes)
-            }
+        model_fields = {
+            f: changes.get(f.name, getattr(self, f.name))
+            for f in fields(self)
+            if not is_transient(f)
+            and hasattr(self, f.name)
+            and (not changes or f.name in changes)
+        }
 
-            serialized = await asyncio.gather(
-                *[
-                    serialize(field, f"{self.db_id}:{field.name}", value)
-                    for field, value in model_fields.items()
-                ]
-            )
-            serialized_fields = list(zip(model_fields.keys(), serialized))
+        serialized = await asyncio.gather(
+            *[
+                serialize(field, f"{self.db_id}:{field.name}", value)
+                for field, value in model_fields.items()
+            ]
+        )
+        serialized_fields = list(zip(model_fields.keys(), serialized))
 
-            await asyncio.gather(
-                *[
-                    value.save(optimistic=optimistic)
-                    for field, value in serialized_fields
-                    if iscoroutinefunction(getattr(value, "save", None))
-                    and (is_cascade(field) or isinstance(value, Collection))
-                ]
-            )
-            return {
-                field.name: getattr(value, "id", f"{self.db_id}:{field.name}")
-                if iscoroutinefunction(getattr(value, "save", None))
-                else value
+        await asyncio.gather(
+            *[
+                value.save(optimistic=optimistic)
                 for field, value in serialized_fields
-                if value is not None
-                or iscoroutinefunction(getattr(value, "save", None))
-            }
+                if iscoroutinefunction(getattr(value, "save", None))
+                and (is_cascade(field) or isinstance(value, Collection))
+            ]
+        )
+        return {
+            field.name: getattr(value, "id", f"{self.db_id}:{field.name}")
+            if iscoroutinefunction(getattr(value, "save", None))
+            else value
+            for field, value in serialized_fields
+            if value is not None or iscoroutinefunction(getattr(value, "save", None))
+        }
 
     async def delete(self) -> None:
         key = self.db_id
         async with connection() as conn:
             keys = await conn.keys(f"{key}:*")
             async with transaction() as tr:
-                tr.delete(*keys, key)
-                tr.srem(self.prefix(), key)
+                await tr.delete(*keys, key)
+                await tr.srem(self.prefix(), key)
 
     async def exists(self) -> bool:
         async with connection() as conn:

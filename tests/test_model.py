@@ -1,6 +1,6 @@
 import sys
 
-from aioredis import Redis  # type: ignore[import]
+from aioredis import Redis
 
 if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
