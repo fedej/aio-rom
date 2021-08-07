@@ -23,7 +23,7 @@ from typing import (
     overload,
 )
 
-from aioredis.commands import MultiExec  # type: ignore[import]
+from aioredis.client import Pipeline
 from typing_extensions import SupportsIndex, TypeGuard
 
 from .exception import ModelNotLoadedException
@@ -61,17 +61,15 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
         return self.values == getattr(other, "values", other)
 
     @abstractmethod
-    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
         pass
 
     async def save(self, optimistic: bool = False) -> None:
         if self.values:
-            async with connection() as conn:
-                if optimistic:
-                    conn.watch(self.key)
-                async with transaction() as tr:
-                    tr.delete(self.key)
-                    self.do_save(tr, self.values)
+            watch = [self.key] if optimistic else []
+            async with transaction(*watch) as tr:
+                tr.delete(self.key)
+                self.do_save(tr, self.values)
 
     async def load(self) -> None:
         pass
@@ -105,7 +103,7 @@ class RedisSet(RedisCollection[C], Set[C], Generic[C]):
         async with connection() as conn:
             return {json.loads(value) for value in await conn.smembers(key)}
 
-    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
         tr.sadd(self.key, *values)
 
     def add(self, value: C) -> None:
@@ -121,7 +119,7 @@ class RedisList(RedisCollection[C], MutableSequence[C], Generic[C]):
         async with connection() as redis:
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
-    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
         tr.rpush(self.key, *values)
 
     def insert(self, index: int, value: C) -> None:
@@ -187,8 +185,8 @@ class ModelCollection(RedisCollection[M], AsyncIterator[M], metaclass=ABCMeta):
             else cls(key, keys, model_class, cascade)
         )
 
-    def do_save(self, tr: MultiExec, values: Collection[M]) -> None:
-        super().do_save(tr, list(self._cache.keys()))  # type: ignore[arg-type]
+    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
+        super().do_save(tr, list(self._cache.keys()))
 
     async def save(self, optimistic: bool = False) -> None:
         async with transaction():
