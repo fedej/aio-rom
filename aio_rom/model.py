@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import logging
+from collections import Iterable
 from dataclasses import field, fields, replace
 from inspect import iscoroutinefunction, signature
 from typing import (
@@ -19,7 +20,14 @@ from typing import (
 )
 
 from .exception import ModelNotFoundException
-from .fields import deserialize, is_cascade, is_transient, serialize, update_field
+from .fields import (
+    deserialize,
+    has_default,
+    is_cascade,
+    is_transient,
+    serialize,
+    update_field,
+)
 from .session import connection, transaction
 from .types import Key, M, RedisValue
 
@@ -166,13 +174,20 @@ class Model(metaclass=ModelDataclassType):
     async def _serialized_model(
         self: M, optimistic: bool, **changes: Any
     ) -> Dict[str, Any]:
-        model_fields = {
-            f: changes.get(f.name, getattr(self, f.name))
-            for f in fields(self)
-            if not is_transient(f)
-            and hasattr(self, f.name)
-            and (not changes or f.name in changes)
-        }
+        model_fields = {}
+            for f in [
+                f
+                for f in fields(self)
+                if not is_transient(f)
+                and hasattr(self, f.name)
+                and (not changes or f.name in changes)
+            ]:
+                value = changes.get(f.name, getattr(self, f.name))
+                if has_default(f):
+                    if not (isinstance(value, (Iterable, type(None))) and not value):
+                        model_fields[f] = value
+                else:
+                    model_fields[f] = value
 
         serialized = await asyncio.gather(
             *[
