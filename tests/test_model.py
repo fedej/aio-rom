@@ -1,4 +1,6 @@
 import sys
+from dataclasses import field
+from typing import Optional, Set
 
 from aioredis import Redis  # type: ignore[import]
 
@@ -20,6 +22,9 @@ from aio_rom.exception import ModelNotFoundException
 
 class ForTesting(Model):
     f1: int
+    f2: Optional[str] = None
+    f3: int = 3
+    f4: Set[int] = field(default_factory=set)
 
 
 class ModelTestCase(TestCase):
@@ -60,7 +65,7 @@ class ModelTestCase(TestCase):
     async def test_save(self) -> None:
         await ForTesting(123, 123).save()
         self.mock_redis_transaction.hmset_dict.assert_called_with(
-            "fortesting:123", {"id": "123", "f1": "123"}
+            "fortesting:123", {"id": "123", "f1": "123", "f3": "3"}
         )
         self.mock_redis_transaction.sadd.assert_called_with("fortesting", 123)
 

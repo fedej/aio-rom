@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from asyncio.coroutines import iscoroutine
 from collections.abc import MutableSequence
-from dataclasses import Field
+from dataclasses import MISSING, Field
 from dataclasses import field as dc_field
 from functools import partial
 from types import MappingProxyType
@@ -45,6 +45,13 @@ class Metadata(TypedDict, total=False):
 
 def is_transient(dataclass_field: Field[F]) -> bool:
     return dataclass_field.metadata.get("transient", False)
+
+
+def has_default(dataclass_field: Field[F]) -> bool:
+    return (
+        dataclass_field.default is not MISSING
+        or dataclass_field.default_factory is not MISSING  # type: ignore[misc]
+    )
 
 
 def is_eager(dataclass_field: Field[F]) -> bool:
@@ -89,6 +96,10 @@ async def deserialize(
             return cast(F, deserialized_value)
     elif is_optional(dataclass_field):
         return None
+    elif dataclass_field.default is not MISSING:
+        return dataclass_field.default
+    elif dataclass_field.default_factory is not MISSING:  # type: ignore
+        return dataclass_field.default_factory()  # type: ignore
     else:
         raise TypeError(f"Value missing for required field {dataclass_field.name}")
 
@@ -115,7 +126,8 @@ def pass_through_deserializer(value: Any) -> Any:
 def update_field(
     name: str, field_type: Type[Union[F, M]], fields: Dict[str, Field[F]]
 ) -> None:
-    dataclass_field = fields.get(name, dc_field()) or dc_field()
+    field = fields.get(name, dc_field())
+    dataclass_field = field if isinstance(field, Field) else dc_field(default=field)
     eager = is_eager(dataclass_field)
     cascade = is_cascade(dataclass_field)
 
