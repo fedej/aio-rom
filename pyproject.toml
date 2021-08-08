@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Topic :: Database :: Front-Ends"
+    "Topic :: Database :: Front-Ends",
 ]
 include = ["aio_rom/py.typed"]
 
