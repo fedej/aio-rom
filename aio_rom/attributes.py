@@ -63,12 +63,12 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
         pass
 
     async def save(self, optimistic: bool = False) -> None:
-        async with connection() as conn:
-            if optimistic:
-                conn.watch(self.key)
-            async with transaction() as tr:
-                tr.delete(self.key)
-                if self.values:
+        if self.values:
+            async with connection() as conn:
+                if optimistic:
+                    conn.watch(self.key)
+                async with transaction() as tr:
+                    tr.delete(self.key)
                     await self.do_save(tr, self.values)
 
     async def load(self) -> None:

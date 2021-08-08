@@ -24,6 +24,7 @@ class Bar(Model, unsafe_hash=True):
     field1: int
     field2: str
     field3: List[int] = field(metadata=Metadata(eager=True), hash=False)
+    field4: int = 3
 
 
 class Foo(Model, unsafe_hash=True):
@@ -71,7 +72,7 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_get_with_references(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], {self.bar}, None)
+        foo = Foo(123, [self.bar], {self.bar})
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
@@ -82,7 +83,7 @@ class RedisIntegrationTestCase(TestCase):
 
     async def _test_collection_references(self, test_cascade: bool = False) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], {self.bar}, None)
+        foo = Foo(123, [self.bar], {self.bar})
         if not test_cascade:
             await foo.save()
         foobar = FooBar(321, {foo})
@@ -105,11 +106,11 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_update_collection_references(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], {self.bar}, None)
+        foo = Foo(123, [self.bar], {self.bar})
         foobar = FooBar(321, {foo})
         await foobar.save()
         refreshed = await foobar.refresh()
-        foo2 = Foo(222, [], set(), None)
+        foo2 = Foo(222, [], set())
         refreshed.foos.add(foo2)
         await refreshed.save()
 
@@ -128,7 +129,7 @@ class RedisIntegrationTestCase(TestCase):
 
     async def test_update_reference(self) -> None:
         await self.bar.save()
-        foo = Foo(123, [self.bar], {self.bar}, None)
+        foo = Foo(123, [self.bar], {self.bar})
         await foo.save()
 
         bar2 = Bar(2, 123, "otherbar", [1, 2, 3, 4])
@@ -170,7 +171,7 @@ class RedisIntegrationTestCase(TestCase):
             assert not await redis.keys("bar*")
 
     async def test_lazy_collection_cascade(self) -> None:
-        foo = Foo(123, [self.bar], {self.bar}, None)
+        foo = Foo(123, [self.bar], {self.bar})
         await foo.save()
         foo = await Foo.get(123)
         other_bar = Bar(2, 124, "value2", [])
