@@ -104,7 +104,7 @@ class Model(metaclass=ModelDataclassType):
     ) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
-            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type]
+            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
                 if key not in found:
                     value = await cls.get(key)
                     if value:

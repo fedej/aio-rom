@@ -11,16 +11,18 @@ from typing import (
 
 from typing_extensions import Protocol, runtime_checkable
 
+from aioredis.client import FieldT, KeyT
+
 if TYPE_CHECKING:
     from .attributes import RedisCollection
     from .model import Model
 
-F = TypeVar("F", str, bool, int, float)
+F = TypeVar("F", str, bool, int, float, bytes, memoryview)
 M = TypeVar("M", bound="Model")
 C = TypeVar("C", bound=Union[str, bool, int, float, bytes, memoryview, "Model"])
 
-RedisValue = Union[str, bytes, memoryview, int, float]
-Key = Union[int, str, bytes, memoryview]
+RedisValue = FieldT
+Key = Union[int, KeyT]
 Serializable = Union[RedisValue, "Model", "RedisCollection"]
 Serialized = Union[RedisValue, "Model", "RedisCollection", None]
 Deserialized = Union[

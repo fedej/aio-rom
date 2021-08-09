@@ -37,7 +37,7 @@ def is_model(model: object) -> TypeGuard[M]:
 
 class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
     def __init__(self, key: Key, values: Collection[C], **kwargs: Any):
-        self.key: Key = key
+        self.key = str(key) if isinstance(key, int) else key
         self.values = values
 
     @classmethod
@@ -101,6 +101,7 @@ class RedisSet(RedisCollection[C], Set[C], Generic[C]):
     @classmethod
     async def get_values_for_key(cls, key: Key) -> Set[C]:
         async with connection() as conn:
+            key = str(key) if isinstance(key, int) else key
             return {json.loads(value) for value in await conn.smembers(key)}
 
     def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
@@ -117,6 +118,7 @@ class RedisList(RedisCollection[C], MutableSequence[C], Generic[C]):
     @classmethod
     async def get_values_for_key(cls, key: Key) -> List[C]:
         async with connection() as redis:
+            key = str(key) if isinstance(key, int) else key
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
     def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
