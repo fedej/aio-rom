@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, AsyncIterator, Dict, Optional
 
-from aioredis import Redis, ConnectionPool
+from aioredis import ConnectionPool, Redis
 from aioredis.client import Pipeline
 
 from aio_rom.types import Key
@@ -69,7 +69,8 @@ async def transaction(*watches: Key) -> AsyncIterator[Pipeline]:
 
     async with connection() as conn:
         async with conn.pipeline() as tr:
-            await tr.watch(*watches)
+            keys = [str(key) if isinstance(key, int) else key for key in watches]
+            await tr.watch(*keys)
             tr.multi()  # type: ignore[no-untyped-call]
             t = TRANSACTION.set(tr)
             try:

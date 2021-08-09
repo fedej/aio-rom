@@ -102,7 +102,7 @@ commands =
 
 [testenv:mypy]
 deps = mypy
-commands = mypy --install-types --non-interactive --strict aio_rom
+commands = mypy --install-types --non-interactive --strict aio_rom tests
 
 [testenv:clean]
 deps = coverage[toml]

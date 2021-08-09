@@ -12,11 +12,11 @@ from typing import (
     Generic,
     List,
     Mapping,
+    Optional,
     Tuple,
     Type,
-    cast,
-    Optional,
     Union,
+    cast,
 )
 
 from .exception import ModelNotFoundException
@@ -115,7 +115,7 @@ class Model(metaclass=ModelDataclassType):
     ) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
-            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type]
+            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
                 if key not in found:
                     value = await cls.get(key)
                     if value:
@@ -175,19 +175,19 @@ class Model(metaclass=ModelDataclassType):
         self: M, optimistic: bool, **changes: Any
     ) -> Dict[str, Any]:
         model_fields = {}
-            for f in [
-                f
-                for f in fields(self)
-                if not is_transient(f)
-                and hasattr(self, f.name)
-                and (not changes or f.name in changes)
-            ]:
-                value = changes.get(f.name, getattr(self, f.name))
-                if has_default(f):
-                    if not (isinstance(value, (Iterable, type(None))) and not value):
-                        model_fields[f] = value
-                else:
+        for f in [
+            f
+            for f in fields(self)
+            if not is_transient(f)
+            and hasattr(self, f.name)
+            and (not changes or f.name in changes)
+        ]:
+            value = changes.get(f.name, getattr(self, f.name))
+            if has_default(f):
+                if not (isinstance(value, (Iterable, type(None))) and not value):
                     model_fields[f] = value
+            else:
+                model_fields[f] = value
 
         serialized = await asyncio.gather(
             *[
