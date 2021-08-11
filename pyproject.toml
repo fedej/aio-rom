@@ -101,7 +101,9 @@ commands =
     isort --check-only .
 
 [testenv:mypy]
-deps = mypy
+deps =
+    mypy
+    pytest
 commands = mypy --install-types --non-interactive --strict aio_rom tests
 
 [testenv:clean]
