@@ -30,13 +30,13 @@ class ForTesting(Model):
 
 class ModelTestCase(TestCase):
     async def asyncSetUp(self) -> None:
-        self.mock_redis_transaction = MagicMock(spec=Pipeline)
+        self.mock_redis_transaction = MagicMock(autospec=Pipeline)
         self.mock_redis_transaction.execute = CoroutineMock()
         self.mock_redis_transaction.delete = CoroutineMock()
         self.mock_redis_transaction.srem = CoroutineMock()
         self.mock_redis_transaction.sadd = CoroutineMock()
         self.mock_redis_transaction.hmset = CoroutineMock()
-        self.mock_redis_client = MagicMock(spec=Redis)
+        self.mock_redis_client = MagicMock(autospec=Redis)
         self.mock_redis_client.pipeline.return_value = self.mock_redis_transaction
         self.transaction_patcher = patch("aio_rom.model.transaction")
         self.transaction_mock = self.transaction_patcher.start()
