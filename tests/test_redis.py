@@ -138,7 +138,7 @@ class RedisIntegrationTestCase(TestCase):
         foo = await foo.update(lazy_bars={bar2})
         async with connection() as redis:
             lazy_bars = await redis.smembers("foo:123:lazy_bars")
-            assert ["2"] == lazy_bars
+            assert {"2"} == lazy_bars
 
         foo = await foo.update(eager_bars=[bar2])
         async with connection() as redis:
