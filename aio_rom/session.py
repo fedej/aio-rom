@@ -31,7 +31,8 @@ async def redis_pool(
         return
     pool = ConnectionPool.from_url(
         address if address else config.get("address", "redis://localhost"),
-        encoding=kwargs.get("encoding", "utf-8"),
+        encoding="utf-8",
+        decode_responses=True,
         **kwargs if kwargs else config.get("kwargs", {}),
     )
     t = POOL.set(pool)
