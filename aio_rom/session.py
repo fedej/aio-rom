@@ -70,7 +70,8 @@ async def transaction(*watches: Key) -> AsyncIterator[Pipeline]:
     async with connection() as conn:
         async with conn.pipeline() as tr:
             keys = [str(key) if isinstance(key, int) else key for key in watches]
-            await tr.watch(*keys)
+            if keys:
+                await tr.watch(*keys)
             tr.multi()  # type: ignore[no-untyped-call]
             t = TRANSACTION.set(tr)
             try:
