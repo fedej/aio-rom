@@ -74,9 +74,10 @@ skip_missing_interpreters = true
 
 [gh-actions]
 python =
-    3.7: clean, py37, style
-    3.8: clean, py38
-    3.9: clean, py39
+    3.7: clean, py37, style, mypy
+    pypy-3.7: clean, pypy3
+    3.8: clean, py38, mypy
+    3.9: clean, py39, mypy
 
 [testenv]
 deps =
