@@ -91,6 +91,17 @@ extras = mypy
 setenv = MYPY_TEST_PREFIX = tests
 commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
 
+[testenv:pypy3]
+deps =
+    asynctest; python_version < "3.8"
+    pytest
+    pytest-cov
+    pytest-asyncio
+    pytest-benchmark
+passenv = CI
+setenv = SKIP_MYPY_TESTS = true
+commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+
 [testenv:style]
 deps =
     black

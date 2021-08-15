@@ -3,6 +3,7 @@ import os.path
 import re
 import sys
 from pathlib import Path
+from unittest import skipIf
 
 from mypy import api
 from mypy.test.config import test_temp_dir
@@ -12,6 +13,7 @@ from mypy.test.helpers import assert_string_arrays_equal
 current_dir = Path(__file__).parent
 
 
+@skipIf(os.environ.get("SKIP_MYPY_TESTS"), "Skip mypy")
 class RomDataSuite(DataSuite):
     files = ["mypy-plugin.test"]
 
