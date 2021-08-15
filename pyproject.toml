@@ -99,8 +99,7 @@ deps =
     pytest-asyncio
     pytest-benchmark
 passenv = CI
-setenv = SKIP_MYPY_TESTS = true
-commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml --ignore-glob='*mypy*.py'
 
 [testenv:style]
 deps =
