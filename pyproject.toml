@@ -31,7 +31,7 @@ mypy = {version = "^0.910", optional = true}
 [tool.poetry.dev-dependencies]
 black = "^21.7-beta.0"
 flake8 = "^3.9.2"
-mypy = "^0.910"
+mypy = {version = "^0.910", optional = true}
 pytest = "^6.2.4"
 pytest-asyncio = "^0.15.1"
 pytest-benchmark = "^3.4.1"
