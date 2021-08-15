@@ -69,7 +69,7 @@ envlist =
     clean
     style
     mypy
-    py37,py38,py39
+    py37,py38,py39,pypy3
 skip_missing_interpreters = true
 
 [gh-actions]
