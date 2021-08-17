@@ -92,14 +92,9 @@ setenv = MYPY_TEST_PREFIX = tests
 commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
 
 [testenv:pypy3]
-deps =
-    asynctest; python_version < "3.8"
-    pytest
-    pytest-cov
-    pytest-asyncio
-    pytest-benchmark
-passenv = CI
-commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml --ignore-glob='*mypy*.py'
+extras =
+setenv =
+commands = {[testenv]commands} --ignore-glob='*mypy*.py'
 
 [testenv:style]
 deps =
