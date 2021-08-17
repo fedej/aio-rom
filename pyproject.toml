@@ -26,12 +26,12 @@ include = ["aio_rom/py.typed"]
 python = "^3.7"
 aioredis = "1.3.1"
 typing-extensions = "^3.10.0.0"
-mypy = {version = "^0.910", optional = true}
+mypy = {version = "^0.910", optional = true, markers = "platform_python_implementation == 'CPython'"}
 
 [tool.poetry.dev-dependencies]
 black = "^21.7-beta.0"
 flake8 = "^3.9.2"
-mypy = "^0.910"
+mypy = {version = "^0.910", optional = true, markers = "platform_python_implementation == 'CPython'"}
 pytest = "^6.2.4"
 pytest-asyncio = "^0.15.1"
 pytest-benchmark = "^3.4.1"
@@ -69,14 +69,15 @@ envlist =
     clean
     style
     mypy
-    py37,py38,py39
+    py37,py38,py39,pypy3
 skip_missing_interpreters = true
 
 [gh-actions]
 python =
-    3.7: clean, py37, style
-    3.8: clean, py38
-    3.9: clean, py39
+    3.7: clean, py37, style, mypy
+    pypy-3.7: clean, pypy3
+    3.8: clean, py38, mypy
+    3.9: clean, py39, mypy
 
 [testenv]
 deps =
@@ -89,6 +90,11 @@ passenv = CI
 extras = mypy
 setenv = MYPY_TEST_PREFIX = tests
 commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+
+[testenv:pypy3]
+extras =
+setenv =
+commands = {[testenv]commands} --ignore-glob='*mypy*.py'
 
 [testenv:style]
 deps =
