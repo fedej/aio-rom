@@ -292,7 +292,7 @@ testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "requests", "xm
 
 [[package]]
 name = "pytest-asyncio"
-version = "0.15.1"
+version = "0.16.0"
 description = "Pytest support for asyncio."
 category = "dev"
 optional = false
@@ -379,7 +379,7 @@ mypy = ["mypy"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "da9a610b9145e55fd3cfdce7c5f1fd13dd7ba4b074cfffc9aec1cc7a5ddda3c4"
+content-hash = "bcc44402e96fc94cf82e7e0f50acb2410c1b80d668c1a5d8dacdbefca9cdff39"
 
 [metadata.files]
 aioredis = [
@@ -542,8 +542,8 @@ pytest = [
     {file = "pytest-6.2.5.tar.gz", hash = "sha256:131b36680866a76e6781d13f101efb86cf674ebb9762eb70d3082b6f29889e89"},
 ]
 pytest-asyncio = [
-    {file = "pytest-asyncio-0.15.1.tar.gz", hash = "sha256:2564ceb9612bbd560d19ca4b41347b54e7835c2f792c504f698e05395ed63f6f"},
-    {file = "pytest_asyncio-0.15.1-py3-none-any.whl", hash = "sha256:3042bcdf1c5d978f6b74d96a151c4cfb9dcece65006198389ccd7e6c60eb1eea"},
+    {file = "pytest-asyncio-0.16.0.tar.gz", hash = "sha256:7496c5977ce88c34379df64a66459fe395cd05543f0a2f837016e7144391fcfb"},
+    {file = "pytest_asyncio-0.16.0-py3-none-any.whl", hash = "sha256:5f2a21273c47b331ae6aa5b36087047b4899e40f03f18397c0e65fa5cca54e9b"},
 ]
 pytest-benchmark = [
     {file = "pytest-benchmark-3.4.1.tar.gz", hash = "sha256:40e263f912de5a81d891619032983557d62a3d85843f9a9f30b98baea0cd7b47"},
