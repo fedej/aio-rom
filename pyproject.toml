@@ -29,7 +29,7 @@ typing-extensions = "^3.10.0.0"
 mypy = {version = "^0.910", optional = true, markers = "platform_python_implementation == 'CPython'"}
 
 [tool.poetry.dev-dependencies]
-black = "^21.10b0"
+black = "^21.11b1"
 flake8 = "^4.0.1"
 mypy = {version = "^0.910", optional = true, markers = "platform_python_implementation == 'CPython'"}
 pytest = "^6.2.5"
