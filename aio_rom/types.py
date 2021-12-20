@@ -1,4 +1,15 @@
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Collection,
+    Optional,
+    TypeVar,
+    Union,
+)
+
+from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .attributes import RedisCollection
@@ -11,6 +22,16 @@ C = TypeVar("C", bound=Union[str, bool, int, float, "Model"])
 RedisValue = Union[str, bytes]
 Key = Union[int, RedisValue]
 Serializable = Union[RedisValue, "Model", "RedisCollection"]
-Serializer = Callable[..., Union[F, Serializable, Awaitable[Serializable]]]
-Deserialized = Union[Optional[F], Awaitable[Optional[F]]]
+Serialized = Union[RedisValue, "Model", "RedisCollection", None]
+Deserialized = Union[
+    Optional[F],
+    Awaitable[Optional[F]],
+    Awaitable[Collection[Any]],
+]
 Deserializer = Callable[..., Deserialized[F]]
+
+
+@runtime_checkable
+class SupportsSave(Protocol):
+    async def save(self, optimistic: bool) -> None:
+        ...

@@ -1,9 +1,9 @@
 import asyncio
 import dataclasses
 import logging
-from collections import Iterable
+from collections.abc import Iterable
 from dataclasses import field, fields, replace
-from inspect import iscoroutinefunction, signature
+from inspect import signature
 from typing import (
     Any,
     AsyncIterator,
@@ -19,16 +19,9 @@ from typing import (
 )
 
 from .exception import ModelNotFoundException
-from .fields import (
-    deserialize,
-    has_default,
-    is_cascade,
-    is_transient,
-    serialize,
-    update_field,
-)
+from .fields import deserialize, has_default, is_cascade, is_transient, serialize
 from .session import connection, transaction
-from .types import Key, M, RedisValue
+from .types import Key, M, RedisValue, SupportsSave
 
 _logger = logging.getLogger(__name__)
 
@@ -58,11 +51,7 @@ class ModelDataclassType(type, Generic[M]):
         unsafe_hash: bool = False,
         frozen: bool = False,
     ) -> "ModelDataclassType[M]":
-        new_namespace = namespace.copy()
-        for field_name, field_type in namespace.get("__annotations__", {}).items():
-            update_field(field_name, field_type, new_namespace)
-
-        cls = cast(Type[M], super().__new__(mcs, name, bases, new_namespace))
+        cls = cast(Type[M], super().__new__(mcs, name, bases, namespace))
         return dataclasses.dataclass(
             init=init,
             repr=repr,
@@ -182,36 +171,22 @@ class Model(metaclass=ModelDataclassType):
                 and (not changes or f.name in changes)
             ]:
                 value = changes.get(f.name, getattr(self, f.name))
-                if has_default(f):
-                    if not (isinstance(value, (Iterable, type(None))) and not value):
-                        model_fields[f] = value
-                else:
-                    model_fields[f] = value
 
-            serialized = await asyncio.gather(
-                *[
-                    serialize(field, f"{self.db_id}:{field.name}", value)
-                    for field, value in model_fields.items()
-                ]
-            )
-            serialized_fields = list(zip(model_fields.keys(), serialized))
+                if not (
+                    has_default(f)
+                    and isinstance(value, (Iterable, type(None)))
+                    and not value
+                ):
+                    key = f"{self.db_id}:{f.name}"
+                    serialized = serialize(value, key, f)
+                    if isinstance(serialized, SupportsSave) and (
+                        is_cascade(f) or isinstance(serialized, Collection)
+                    ):
+                        await serialized.save(optimistic=optimistic)
+                        serialized = key
+                    model_fields[f.name] = serialized
 
-            await asyncio.gather(
-                *[
-                    value.save(optimistic=optimistic)
-                    for field, value in serialized_fields
-                    if iscoroutinefunction(getattr(value, "save", None))
-                    and (is_cascade(field) or isinstance(value, Collection))
-                ]
-            )
-            return {
-                field.name: getattr(value, "id", f"{self.db_id}:{field.name}")
-                if iscoroutinefunction(getattr(value, "save", None))
-                else value
-                for field, value in serialized_fields
-                if value is not None
-                or iscoroutinefunction(getattr(value, "save", None))
-            }
+            return model_fields
 
     async def delete(self) -> None:
         key = self.db_id

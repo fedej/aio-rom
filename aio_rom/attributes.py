@@ -43,11 +43,11 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
     @classmethod
     async def from_key(
         cls,
-        default_factory: Callable[[], Collection[C]],
+        default_factory: Callable[[], "RedisCollection"[C]],
         key: Key,
         eager: bool = False,
         **kwargs: Any,
-    ) -> Collection[C]:
+    ) -> "RedisCollection"[C]:
         values = await cls.get_values_for_key(key)
         if values is None:
             return default_factory() if default_factory != MISSING else None
@@ -55,11 +55,13 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
         collection = cls(key, values, **kwargs)
         if eager:
             await collection.load()
-            return collection.values
         return collection
 
+    def __eq__(self, other: object) -> bool:
+        return self.values == getattr(other, "values", other)
+
     @abstractmethod
-    async def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
         pass
 
     async def save(self, optimistic: bool = False) -> None:
@@ -69,7 +71,7 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
                     conn.watch(self.key)
                 async with transaction() as tr:
                     tr.delete(self.key)
-                    await self.do_save(tr, self.values)
+                    self.do_save(tr, self.values)
 
     async def load(self) -> None:
         pass
@@ -103,7 +105,7 @@ class RedisSet(RedisCollection[C], Set[C], Generic[C]):
         async with connection() as conn:
             return {json.loads(value) for value in await conn.smembers(key)}
 
-    async def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
         tr.sadd(self.key, *values)
 
     def add(self, value: C) -> None:
@@ -119,7 +121,7 @@ class RedisList(RedisCollection[C], MutableSequence[C], Generic[C]):
         async with connection() as redis:
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
-    async def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
+    def do_save(self, tr: MultiExec, values: Collection[C]) -> None:
         tr.rpush(self.key, *values)
 
     def insert(self, index: int, value: C) -> None:
@@ -185,8 +187,8 @@ class ModelCollection(RedisCollection[M], AsyncIterator[M], metaclass=ABCMeta):
             else cls(key, keys, model_class, cascade)
         )
 
-    async def do_save(self, tr: MultiExec, values: Collection[M]) -> None:
-        await super().do_save(tr, list(self._cache.keys()))  # type: ignore[arg-type]
+    def do_save(self, tr: MultiExec, values: Collection[M]) -> None:
+        super().do_save(tr, list(self._cache.keys()))  # type: ignore[arg-type]
 
     async def save(self, optimistic: bool = False) -> None:
         async with transaction():
