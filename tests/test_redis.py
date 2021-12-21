@@ -175,10 +175,10 @@ class RedisIntegrationTestCase(TestCase):
         await foo.save()
         foo = await Foo.get(123)
         other_bar = Bar(2, 124, "value2", [])
+        await cast(RedisModelSet[Bar], foo.lazy_bars).load()
         foo.lazy_bars.add(other_bar)
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
         await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
-        await cast(RedisModelSet[Bar], foo.lazy_bars).load()
         assert 2 == len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
