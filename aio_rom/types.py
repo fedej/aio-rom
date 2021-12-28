@@ -13,6 +13,8 @@ from typing_extensions import Protocol, runtime_checkable
 
 from aioredis.client import FieldT, KeyT
 
+from aioredis.client import FieldT, KeyT
+
 if TYPE_CHECKING:
     from .attributes import RedisCollection
     from .model import Model
