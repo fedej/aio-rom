@@ -12,11 +12,11 @@ from typing import (
     Generic,
     List,
     Mapping,
+    Optional,
     Tuple,
     Type,
-    cast,
-    Optional,
     Union,
+    cast,
 )
 
 from .exception import ModelNotFoundException
@@ -174,14 +174,14 @@ class Model(metaclass=ModelDataclassType):
             value = changes.get(f.name, getattr(self, f.name))
 
             if not (
-                    has_default(f)
-                    and isinstance(value, (Iterable, type(None)))
-                    and not value
+                has_default(f)
+                and isinstance(value, (Iterable, type(None)))
+                and not value
             ):
                 key = f"{self.db_id}:{f.name}"
                 serialized = serialize(value, key, f)
                 if isinstance(serialized, SupportsSave) and (
-                        is_cascade(f) or isinstance(serialized, Collection)
+                    is_cascade(f) or isinstance(serialized, Collection)
                 ):
                     await serialized.save(optimistic=optimistic)
                     serialized = key

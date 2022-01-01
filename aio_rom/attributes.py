@@ -61,7 +61,11 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
         return self.values == getattr(other, "values", other)
 
     @abstractmethod
-    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
+    def do_save(
+        self,
+        tr: Pipeline,
+        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+    ) -> None:
         pass
 
     async def save(self, optimistic: bool = False) -> None:
@@ -69,7 +73,7 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
             watch = [self.key] if optimistic else []
             async with transaction(*watch) as tr:
                 tr.delete(self.key)
-                self.do_save(tr, self.values)
+                self.do_save(tr, self.values)  # type: ignore[arg-type]
 
     async def load(self) -> None:
         pass
@@ -104,7 +108,11 @@ class RedisSet(RedisCollection[C], Set[C], Generic[C]):
             key = str(key) if isinstance(key, int) else key
             return {json.loads(value) for value in await conn.smembers(key)}
 
-    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
+    def do_save(
+        self,
+        tr: Pipeline,
+        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+    ) -> None:
         tr.sadd(self.key, *values)
 
     def add(self, value: C) -> None:
@@ -121,7 +129,11 @@ class RedisList(RedisCollection[C], MutableSequence[C], Generic[C]):
             key = str(key) if isinstance(key, int) else key
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
-    def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
+    def do_save(
+        self,
+        tr: Pipeline,
+        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+    ) -> None:
         tr.rpush(self.key, *values)
 
     def insert(self, index: int, value: C) -> None:
