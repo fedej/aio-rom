@@ -106,6 +106,7 @@ commands =
 deps =
     mypy
     pytest
+    asynctest; python_version < "3.8"
 commands = mypy --install-types --non-interactive --strict aio_rom tests
 
 [testenv:clean]
