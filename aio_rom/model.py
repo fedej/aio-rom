@@ -104,7 +104,7 @@ class Model(metaclass=ModelDataclassType):
     ) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
-            async for key in conn.scan_iter(match=cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
+            async for key in conn.sscan_iter(cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
                 if key not in found:
                     value = await cls.get(key)
                     if value:
@@ -149,7 +149,7 @@ class Model(metaclass=ModelDataclassType):
         watch = [self.db_id] if optimistic else []
         async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic)
-            await tr.hmset(self.db_id, model_dict)
+            await tr.hset(self.db_id, mapping=model_dict)
             await tr.sadd(self.prefix(), self.id)
 
     async def update(self: M, optimistic: bool = False, **changes: Any) -> M:
@@ -157,7 +157,7 @@ class Model(metaclass=ModelDataclassType):
         async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic, **changes)
             for key, value in model_dict.items():
-                tr.hset(self.db_id, key, value)
+                await tr.hset(self.db_id, key, value)
             return replace(self, **changes)
 
     async def _serialized_model(

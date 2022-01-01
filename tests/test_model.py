@@ -35,7 +35,7 @@ class ModelTestCase(TestCase):
         self.mock_redis_transaction.delete = CoroutineMock()
         self.mock_redis_transaction.srem = CoroutineMock()
         self.mock_redis_transaction.sadd = CoroutineMock()
-        self.mock_redis_transaction.hmset = CoroutineMock()
+        self.mock_redis_transaction.hset = CoroutineMock()
         self.mock_redis_client = MagicMock(autospec=Redis)
         self.mock_redis_client.pipeline.return_value = self.mock_redis_transaction
         self.transaction_patcher = patch("aio_rom.model.transaction")
@@ -58,8 +58,8 @@ class ModelTestCase(TestCase):
 
     async def test_save(self) -> None:
         await ForTesting(123, 123).save()
-        self.mock_redis_transaction.hmset.assert_called_with(
-            "fortesting:123", {"id": "123", "f1": "123", "f3": "3"}
+        self.mock_redis_transaction.hset.assert_called_with(
+            "fortesting:123", mapping={"id": "123", "f1": "123", "f3": "3"}
         )
         self.mock_redis_transaction.sadd.assert_called_with("fortesting", 123)
 
@@ -90,7 +90,7 @@ class ModelTestCase(TestCase):
         )
         keys = MagicMock()
         keys.__aiter__.return_value = ["123", "124"]
-        self.mock_redis_client.scan_iter.return_value = keys
+        self.mock_redis_client.sscan_iter.return_value = keys
         items = 0
         async for obj in ForTesting.scan():
             assert 123 == obj.f1
