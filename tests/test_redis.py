@@ -12,7 +12,7 @@ if sys.version_info >= (3, 8):
 
     ASYNCTEST = False
 else:
-    from asynctest import TestCase  # type: ignore[import]
+    from asynctest import TestCase
 
     ASYNCTEST = True
 
@@ -38,7 +38,7 @@ class FooBar(Model):
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
-class RedisIntegrationTestCase(TestCase):  # type: ignore[misc]
+class RedisIntegrationTestCase(TestCase):
     async def asyncSetUp(self) -> None:
         self.bar = Bar(1, 123, "value", [1, 2, 3])
 
@@ -48,8 +48,8 @@ class RedisIntegrationTestCase(TestCase):  # type: ignore[misc]
         await FooBar.delete_all()
 
     if ASYNCTEST:
-        tearDown = asyncTearDown
-        setUp = asyncSetUp
+        tearDown = asyncTearDown  # type: ignore[assignment]
+        setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
         await self.bar.save()

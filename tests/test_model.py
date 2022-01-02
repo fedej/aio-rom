@@ -12,8 +12,8 @@ if sys.version_info >= (3, 8):
 
     ASYNCTEST = False
 else:
-    from asynctest import TestCase  # type: ignore[import]
-    from asynctest.mock import CoroutineMock, MagicMock, patch  # type: ignore[import]
+    from asynctest import TestCase
+    from asynctest.mock import CoroutineMock, MagicMock, patch
 
     ASYNCTEST = True
 
@@ -28,7 +28,7 @@ class ForTesting(Model):
     f4: Set[int] = field(default_factory=set)
 
 
-class ModelTestCase(TestCase):  # type: ignore[misc]
+class ModelTestCase(TestCase):
     async def asyncSetUp(self) -> None:
         self.mock_redis_transaction = MagicMock(autospec=Pipeline)
         self.mock_redis_transaction.execute = CoroutineMock()
@@ -53,8 +53,8 @@ class ModelTestCase(TestCase):  # type: ignore[misc]
         patch.stopall()
 
     if ASYNCTEST:
-        tearDown = asyncTearDown
-        setUp = asyncSetUp
+        tearDown = asyncTearDown  # type: ignore[assignment]
+        setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
         await ForTesting(123, 123).save()
