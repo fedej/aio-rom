@@ -36,6 +36,9 @@ pytest = "^6.2.5"
 pytest-asyncio = "^0.16.0"
 pytest-benchmark = "^3.4.1"
 isort = "^5.9.3"
+bandit = "^1.7.1"
+flake8-bugbear = "^21.11.29"
+flake8-comprehensions = "^3.7.0"
 
 [tool.poetry.extras]
 mypy = ["mypy"]
@@ -97,10 +100,14 @@ commands = {[testenv]commands} --ignore-glob='*mypy*.py'
 deps =
     black
     flake8
+    flake8-bugbear
+    flake8-comprehensions
+    bandit
     isort
 commands =
     black --check .
-    flake8 --max-line-length=88 --ignore=E203,W503 .
+    flake8 --max-line-length=88 --ignore=E203,W503,B950 --select=E,W,F,C9,N8,B,B9,C4 .
+    bandit -r aio_rom
     isort --check-only .
 
 [testenv:mypy]

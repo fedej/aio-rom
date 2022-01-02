@@ -236,8 +236,8 @@ class ModelCollection(RedisCollection[M], AsyncIterator[M], metaclass=ABCMeta):
     async def __anext__(self) -> M:
         try:
             return await next(self._iter)
-        except StopIteration:
-            raise StopAsyncIteration
+        except StopIteration as err:
+            raise StopAsyncIteration from err
 
 
 class RedisModelSet(ModelCollection[M], RedisSet[M], Generic[M]):
