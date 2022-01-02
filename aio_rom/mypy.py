@@ -47,8 +47,10 @@ class AioRomPlugin(Plugin):
         sym = ctx.api.lookup_fully_qualified_or_none(
             "aio_rom.exception.ModelNotFoundException"
         )
-        assert sym is not None
-        assert isinstance(sym.node, TypeInfo)
+        if sym is None:
+            raise TypeError("ModelNotFoundException class missing")
+        elif not isinstance(sym.node, TypeInfo):
+            raise TypeError(f"{sym.node} needs to be TypeInfo")
         not_found_class.bases = [Instance(sym.node, [])]
         not_found_attr = Var(
             "NotFoundException",
