@@ -179,7 +179,7 @@ def field_deserializer(
             model_class = type_args[0]
             if is_model_type(model_class):
                 deserializer = partial(
-                    RedisModelSet.from_key,
+                    RedisModelSet.deserialize,
                     dataclass_field.default_factory,
                     model_class=model_class,
                     eager=eager,
@@ -187,7 +187,7 @@ def field_deserializer(
                 )
             else:
                 deserializer = partial(
-                    RedisSet.from_key,
+                    RedisSet.deserialize,
                     dataclass_field.default_factory,
                     eager=eager,
                 )
@@ -195,7 +195,7 @@ def field_deserializer(
             model_class = type_args[0]
             if is_model(model_class):
                 deserializer = partial(
-                    RedisModelList.from_key,
+                    RedisModelList.deserialize,
                     dataclass_field.default_factory,
                     model_class=model_class,
                     eager=eager,
@@ -203,7 +203,7 @@ def field_deserializer(
                 )
             else:
                 deserializer = partial(
-                    RedisList.from_key,
+                    RedisList.deserialize,
                     dataclass_field.default_factory,
                     eager=eager,
                 )

@@ -1,7 +1,7 @@
 import os
 import sys
 from dataclasses import field
-from typing import List, Optional, Set, cast
+from typing import List, Optional, Set
 from unittest import skipUnless
 
 from aio_rom import Model
@@ -23,13 +23,19 @@ from aio_rom.session import connection
 class Bar(Model, unsafe_hash=True):
     field1: int
     field2: str
-    field3: List[int] = field(metadata=Metadata(eager=True), hash=False)
+    field3: List[int] = field(
+        default_factory=list, metadata=Metadata(eager=True), hash=False
+    )
     field4: int = 3
 
 
 class Foo(Model, unsafe_hash=True):
-    eager_bars: List[Bar] = field(metadata=Metadata(eager=True), hash=False)
-    lazy_bars: Set[Bar] = field(compare=False, metadata=Metadata(cascade=True))
+    eager_bars: List[Bar] = field(
+        default_factory=list, metadata=Metadata(eager=True), hash=False
+    )
+    lazy_bars: Set[Bar] = field(
+        default_factory=set, compare=False, metadata=Metadata(cascade=True)
+    )
     f1: Optional[str] = None
 
 
@@ -76,7 +82,8 @@ class RedisIntegrationTestCase(TestCase):
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
-        await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
+        assert isinstance(gotten_foo.lazy_bars, RedisModelSet)
+        await gotten_foo.lazy_bars.load()
         for bar in gotten_foo.lazy_bars:
             assert bar in foo.lazy_bars
         assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
@@ -94,7 +101,8 @@ class RedisIntegrationTestCase(TestCase):
         assert {foo} == gotten_foobar.foos
         for gotten_foo in gotten_foobar.foos:
             assert 1 == len(gotten_foo.eager_bars)
-            await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
+            assert isinstance(gotten_foo.lazy_bars, RedisModelSet)
+            await gotten_foo.lazy_bars.load()
             for bar in gotten_foo.lazy_bars:
                 assert bar in foo.lazy_bars
 
@@ -175,10 +183,12 @@ class RedisIntegrationTestCase(TestCase):
         await foo.save()
         foo = await Foo.get(123)
         other_bar = Bar(2, 124, "value2", [])
-        await cast(RedisModelSet[Bar], foo.lazy_bars).load()
+        assert isinstance(foo.lazy_bars, RedisModelSet)
+        await foo.lazy_bars.load()
         foo.lazy_bars.add(other_bar)
         await foo.save()
         gotten_foo = await Foo.get(123)
         assert foo == gotten_foo
-        await cast(RedisModelSet[Bar], gotten_foo.lazy_bars).load()
+        assert isinstance(gotten_foo.lazy_bars, RedisModelSet)
+        await gotten_foo.lazy_bars.load()
         assert 2 == len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
