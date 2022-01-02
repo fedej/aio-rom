@@ -2,16 +2,14 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, AsyncIterator, Dict, Optional
 
-from aioredis.commands import (  # type: ignore[import]
-    ContextRedis,
-    Redis,
-    create_redis_pool,
-)
-from aioredis.commands.transaction import MultiExec  # type: ignore[import]
+from aioredis import ConnectionPool, Redis
+from aioredis.client import Pipeline
 
-REDIS: ContextVar[Optional[Redis]] = ContextVar("redis", default=None)
-CONNECTION: ContextVar[Optional[ContextRedis]] = ContextVar("connection", default=None)
-TRANSACTION: ContextVar[Optional[MultiExec]] = ContextVar("transaction", default=None)
+from aio_rom.types import Key
+
+POOL: ContextVar[Optional[ConnectionPool]] = ContextVar("pool", default=None)
+CONNECTION: ContextVar[Optional[Redis]] = ContextVar("connection", default=None)
+TRANSACTION: ContextVar[Optional[Pipeline]] = ContextVar("transaction", default=None)
 
 config: Dict[str, Any] = {}
 
@@ -25,59 +23,62 @@ def configure(address: Optional[str] = None, *args: Any, **kwargs: Any) -> None:
 
 @asynccontextmanager
 async def redis_pool(
-    address: Optional[str] = None, *args: Any, **kwargs: Any
-) -> AsyncIterator[Redis]:
-    redis = REDIS.get()
-    if redis:
-        yield redis
+    address: Optional[str] = None, **kwargs: Any
+) -> AsyncIterator[ConnectionPool]:
+    pool = POOL.get()
+    if pool:
+        yield pool
         return
-    redis = await create_redis_pool(
+    pool = ConnectionPool.from_url(
         address if address else config.get("address", "redis://localhost"),
-        encoding=kwargs.get("encoding", "utf-8"),
-        *args if args else config.get("args", []),
+        encoding="utf-8",
+        decode_responses=True,
         **kwargs if kwargs else config.get("kwargs", {}),
     )
-    t = REDIS.set(redis)
+    t = POOL.set(pool)
     try:
-        yield redis
+        yield pool
     finally:
-        redis.close()
-        await redis.wait_closed()
-        REDIS.reset(t)
+        await pool.disconnect()
+        POOL.reset(t)
 
 
 @asynccontextmanager
 async def connection(
-    address: Optional[str] = None, *args: Any, **kwargs: Any
-) -> AsyncIterator[ContextRedis]:
+    address: Optional[str] = None, **kwargs: Any
+) -> AsyncIterator[Redis]:
     connection = CONNECTION.get()
     if connection:
         yield connection
         return
 
-    async with redis_pool(address, *args, **kwargs) as redis:
-        with await redis as conn:
-            t = CONNECTION.set(conn)
+    async with redis_pool(address, **kwargs) as pool:
+        async with Redis(single_connection_client=True, connection_pool=pool) as redis:
+            t = CONNECTION.set(redis)
             try:
-                yield conn
+                yield redis
             finally:
                 CONNECTION.reset(t)
 
 
 @asynccontextmanager
-async def transaction() -> AsyncIterator[MultiExec]:
+async def transaction(*watches: Key) -> AsyncIterator[Pipeline]:
     transaction = TRANSACTION.get()
     if transaction:
         yield transaction
         return
 
     async with connection() as conn:
-        transaction = conn.multi_exec()
-        t = TRANSACTION.set(transaction)
-        try:
-            yield transaction
-        finally:
+        async with conn.pipeline() as tr:
+            keys = [str(key) if isinstance(key, int) else key for key in watches]
+            if keys:
+                await tr.watch(*keys)
+            tr.multi()  # type: ignore[no-untyped-call]
+            t = TRANSACTION.set(tr)
             try:
-                await transaction.execute()
+                yield tr
             finally:
-                TRANSACTION.reset(t)
+                try:
+                    await tr.execute()
+                finally:
+                    TRANSACTION.reset(t)

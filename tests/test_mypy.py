@@ -19,7 +19,7 @@ class RomDataSuite(DataSuite):
         assert testcase.old_cwd is not None, "test was not properly set up"
         mypy_cmdline = [
             "--show-traceback",
-            "--no-silence-site-packages",
+            # TODO: add once aioredis is properly typed "--no-silence-site-packages",
             "--no-error-summary",
             f"--config-file={str(current_dir)}/aio_rom.ini",
         ]

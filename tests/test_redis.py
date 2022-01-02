@@ -17,7 +17,7 @@ else:
     ASYNCTEST = True
 
 from aio_rom.fields import Metadata
-from aio_rom.session import redis_pool
+from aio_rom.session import connection
 
 
 class Bar(Model, unsafe_hash=True):
@@ -54,7 +54,7 @@ class RedisIntegrationTestCase(TestCase):
     async def test_save(self) -> None:
         await self.bar.save()
 
-        async with redis_pool() as redis:
+        async with connection() as redis:
             field1 = await redis.hget("bar:1", "field1")
             field2 = await redis.hget("bar:1", "field2")
             field3 = await redis.hget("bar:1", "field3")
@@ -121,7 +121,7 @@ class RedisIntegrationTestCase(TestCase):
     async def test_update(self) -> None:
         await self.bar.save()
         await self.bar.update(field2="updated")
-        async with redis_pool() as redis:
+        async with connection() as redis:
             field2 = await redis.hget("bar:1", "field2")
         assert "updated" == field2
         bar = await Bar.get(1)
@@ -136,12 +136,12 @@ class RedisIntegrationTestCase(TestCase):
         await bar2.save()
 
         foo = await foo.update(lazy_bars={bar2})
-        async with redis_pool() as redis:
+        async with connection() as redis:
             lazy_bars = await redis.smembers("foo:123:lazy_bars")
-            assert ["2"] == lazy_bars
+            assert {"2"} == lazy_bars
 
         foo = await foo.update(eager_bars=[bar2])
-        async with redis_pool() as redis:
+        async with connection() as redis:
             eager_bars = await redis.lrange("foo:123:eager_bars", 0, -1)
             assert ["2"] == eager_bars
 
@@ -153,20 +153,20 @@ class RedisIntegrationTestCase(TestCase):
         bar = await Bar.get(1)
         bar.field2 = "updated"
         await bar.save()
-        async with redis_pool() as redis:
+        async with connection() as redis:
             field2 = await redis.hget("bar:1", "field2")
         assert "updated" == field2
 
     async def test_delete(self) -> None:
         await self.bar.save()
-        async with redis_pool() as redis:
+        async with connection() as redis:
             assert await redis.exists("bar:1")
             await self.bar.delete()
             assert not await redis.exists("bar:1")
 
     async def test_delete_all(self) -> None:
         await self.bar.save()
-        async with redis_pool() as redis:
+        async with connection() as redis:
             await Bar.delete_all()
             assert not await redis.keys("bar*")
 

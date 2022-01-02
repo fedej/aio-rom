@@ -12,6 +12,7 @@ from typing import (
     Generic,
     List,
     Mapping,
+    Optional,
     Tuple,
     Type,
     Union,
@@ -98,10 +99,12 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def scan(cls: Type[M], **kwargs: Union[str, int]) -> AsyncIterator[M]:
+    async def scan(
+        cls: Type[M], **kwargs: Union[Optional[str], Optional[int]]
+    ) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
-            async for key in conn.isscan(cls.prefix(), **kwargs):
+            async for key in conn.sscan_iter(cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
                 if key not in found:
                     value = await cls.get(key)
                     if value:
@@ -143,58 +146,56 @@ class Model(metaclass=ModelDataclassType):
         return f"{self.prefix()}:{str(self.id)}"
 
     async def save(self, optimistic: bool = False) -> None:
-        async with transaction() as tr:
+        watch = [self.db_id] if optimistic else []
+        async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic)
-            tr.hmset_dict(self.db_id, model_dict)
-            tr.sadd(self.prefix(), self.id)
+            await tr.hset(self.db_id, mapping=model_dict)
+            await tr.sadd(self.prefix(), self.id)
 
     async def update(self: M, optimistic: bool = False, **changes: Any) -> M:
-        async with transaction() as tr:
+        watch = [self.db_id] if optimistic else []
+        async with transaction(*watch) as tr:
             model_dict = await self._serialized_model(optimistic, **changes)
             for key, value in model_dict.items():
-                tr.hset(self.db_id, key, value)
+                await tr.hset(self.db_id, key, value)
             return replace(self, **changes)
 
     async def _serialized_model(
         self: M, optimistic: bool, **changes: Any
     ) -> Dict[str, Any]:
-        async with connection() as conn:
-            if optimistic:
-                conn.watch(self.db_id)
+        model_fields = {}
+        for f in [
+            f
+            for f in fields(self)
+            if not is_transient(f)
+            and hasattr(self, f.name)
+            and (not changes or f.name in changes)
+        ]:
+            value = changes.get(f.name, getattr(self, f.name))
 
-            model_fields = {}
-            for f in [
-                f
-                for f in fields(self)
-                if not is_transient(f)
-                and hasattr(self, f.name)
-                and (not changes or f.name in changes)
-            ]:
-                value = changes.get(f.name, getattr(self, f.name))
-
-                if not (
-                    has_default(f)
-                    and isinstance(value, (Iterable, type(None)))
-                    and not value
+            if not (
+                has_default(f)
+                and isinstance(value, (Iterable, type(None)))
+                and not value
+            ):
+                key = f"{self.db_id}:{f.name}"
+                serialized = serialize(value, key, f)
+                if isinstance(serialized, SupportsSave) and (
+                    is_cascade(f) or isinstance(serialized, Collection)
                 ):
-                    key = f"{self.db_id}:{f.name}"
-                    serialized = serialize(value, key, f)
-                    if isinstance(serialized, SupportsSave) and (
-                        is_cascade(f) or isinstance(serialized, Collection)
-                    ):
-                        await serialized.save(optimistic=optimistic)
-                        serialized = key
-                    model_fields[f.name] = serialized
+                    await serialized.save(optimistic=optimistic)
+                    serialized = key
+                model_fields[f.name] = serialized
 
-            return model_fields
+        return model_fields
 
     async def delete(self) -> None:
         key = self.db_id
         async with connection() as conn:
             keys = await conn.keys(f"{key}:*")
             async with transaction() as tr:
-                tr.delete(*keys, key)
-                tr.srem(self.prefix(), key)
+                await tr.delete(*keys, key)
+                await tr.srem(self.prefix(), key)
 
     async def exists(self) -> bool:
         async with connection() as conn:

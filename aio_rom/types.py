@@ -9,18 +9,19 @@ from typing import (
     Union,
 )
 
+from aioredis.client import FieldT, KeyT
 from typing_extensions import Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .attributes import RedisCollection
     from .model import Model
 
-F = TypeVar("F", str, bool, int, float)
+F = TypeVar("F", str, bool, int, float, bytes, memoryview)
 M = TypeVar("M", bound="Model")
-C = TypeVar("C", bound=Union[str, bool, int, float, "Model"])
+C = TypeVar("C", bound=Union[str, bool, int, float, bytes, memoryview, "Model"])
 
-RedisValue = Union[str, bytes]
-Key = Union[int, RedisValue]
+RedisValue = FieldT
+Key = Union[int, KeyT]
 Serializable = Union[RedisValue, "Model", "RedisCollection"]
 Serialized = Union[RedisValue, "Model", "RedisCollection", None]
 Deserialized = Union[

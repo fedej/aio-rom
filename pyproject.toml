@@ -24,7 +24,7 @@ include = ["aio_rom/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aioredis = "1.3.1"
+aioredis = "2.0.1"
 typing-extensions = ">=3.10,<5.0"
 mypy = {version = ">=0.920,<0.931", optional = true, markers = "platform_python_implementation == 'CPython'"}
 
@@ -65,15 +65,16 @@ envlist =
     clean
     style
     mypy
-    py37,py38,py39,pypy3
+    py{37,38,39,310},pypy3
 skip_missing_interpreters = true
 
 [gh-actions]
 python =
-    3.7: clean, py37, style, mypy
-    pypy-3.7: clean, pypy3
+    3.7: clean, py37, style
     3.8: clean, py38, mypy
-    3.9: clean, py39, mypy
+    3.9: clean, py39
+    3.10: clean, py310
+    pypy-3: clean, pypy3
 
 [testenv]
 deps =
@@ -103,8 +104,10 @@ commands =
     isort --check-only .
 
 [testenv:mypy]
-deps = mypy
-commands = mypy --install-types --non-interactive --strict aio_rom
+deps =
+    mypy
+    pytest
+commands = mypy --install-types --non-interactive --strict aio_rom tests
 
 [testenv:clean]
 deps = coverage[toml]

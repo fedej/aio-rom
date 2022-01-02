@@ -2,7 +2,8 @@ import sys
 from dataclasses import field
 from typing import Optional, Set
 
-from aioredis import Redis  # type: ignore[import]
+from aioredis import Redis
+from aioredis.client import Pipeline
 
 if sys.version_info >= (3, 8):
     from unittest.async_case import IsolatedAsyncioTestCase as TestCase
@@ -28,22 +29,15 @@ class ForTesting(Model):
 
 
 class ModelTestCase(TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ModelTestCase.redis_await = Redis.__await__  # type: ignore[attr-defined]
-        # Redis & ContextRedis are awaitable, asynctest will try to yield from them
-        delattr(Redis, "__await__")
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        setattr(Redis, "__await__", ModelTestCase.redis_await)  # type: ignore[attr-defined] # noqa: E501
-
     async def asyncSetUp(self) -> None:
-        self.mock_redis_transaction = MagicMock(spec=Redis)
-        self.mock_redis_transaction.execute.side_effect = CoroutineMock(spec=Redis)
-        self.mock_redis_client = MagicMock(spec=Redis)
-        self.mock_redis_client.multi_exec.return_value = self.mock_redis_transaction
-        self.mock_redis_client.smembers.side_effect = CoroutineMock()
+        self.mock_redis_transaction = MagicMock(autospec=Pipeline)
+        self.mock_redis_transaction.execute = CoroutineMock()
+        self.mock_redis_transaction.delete = CoroutineMock()
+        self.mock_redis_transaction.srem = CoroutineMock()
+        self.mock_redis_transaction.sadd = CoroutineMock()
+        self.mock_redis_transaction.hset = CoroutineMock()
+        self.mock_redis_client = MagicMock(autospec=Redis)
+        self.mock_redis_client.pipeline.return_value = self.mock_redis_transaction
         self.transaction_patcher = patch("aio_rom.model.transaction")
         self.transaction_mock = self.transaction_patcher.start()
         self.transaction_mock.return_value.__aenter__.return_value = (
@@ -64,8 +58,8 @@ class ModelTestCase(TestCase):
 
     async def test_save(self) -> None:
         await ForTesting(123, 123).save()
-        self.mock_redis_transaction.hmset_dict.assert_called_with(
-            "fortesting:123", {"id": "123", "f1": "123", "f3": "3"}
+        self.mock_redis_transaction.hset.assert_called_with(
+            "fortesting:123", mapping={"id": "123", "f1": "123", "f3": "3"}
         )
         self.mock_redis_transaction.sadd.assert_called_with("fortesting", 123)
 
@@ -96,7 +90,7 @@ class ModelTestCase(TestCase):
         )
         keys = MagicMock()
         keys.__aiter__.return_value = ["123", "124"]
-        self.mock_redis_client.isscan.return_value = keys
+        self.mock_redis_client.sscan_iter.return_value = keys
         items = 0
         async for obj in ForTesting.scan():
             assert 123 == obj.f1
@@ -105,7 +99,7 @@ class ModelTestCase(TestCase):
         assert 2 == items
 
     async def test_all(self) -> None:
-        self.mock_redis_client.smembers.side_effect.return_value = ["123", "124"]
+        self.mock_redis_client.smembers = CoroutineMock(return_value=["123", "124"])
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
         )
