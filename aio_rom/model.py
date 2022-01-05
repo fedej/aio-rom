@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import dataclasses
 import logging
@@ -7,24 +9,26 @@ from inspect import signature
 from typing import (
     Any,
     AsyncIterator,
-    Collection,
     Dict,
     Generic,
-    List,
     Mapping,
     Optional,
     Tuple,
     Type,
+    TypeVar,
     Union,
     cast,
 )
 
 from .exception import ModelNotFoundException
-from .fields import deserialize, has_default, is_cascade, is_transient, serialize
+from .fields import deserialize, has_default, is_transient, serialize
 from .session import connection, transaction
-from .types import Key, M, RedisValue, SupportsSave
+from .types import IModel, Key, RedisValue
 
 _logger = logging.getLogger(__name__)
+
+
+M = TypeVar("M", bound="Model")
 
 
 class ModelDataclassType(type, Generic[M]):
@@ -114,18 +118,13 @@ class Model(metaclass=ModelDataclassType):
                         _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @classmethod
-    async def all(cls: Type[M]) -> List[M]:
+    async def all(cls: Type[M]) -> Iterable[M]:
         async with connection() as conn:
             keys = await conn.smembers(cls.prefix())
             return await asyncio.gather(*[cls.get(key) for key in keys])
 
-    @staticmethod
-    async def flush() -> None:
-        async with connection() as conn:
-            await conn.flushdb()
-
     @classmethod
-    async def count(cls) -> int:
+    async def total_count(cls) -> int:
         async with connection() as conn:
             return int(await conn.scard(cls.prefix()))
 
@@ -180,9 +179,7 @@ class Model(metaclass=ModelDataclassType):
             ):
                 key = f"{self.db_id}:{f.name}"
                 serialized = serialize(value, key, f)
-                if isinstance(serialized, SupportsSave) and (
-                    is_cascade(f) or isinstance(serialized, Collection)
-                ):
+                if isinstance(serialized, IModel):
                     await serialized.save(optimistic=optimistic)
                     serialized = key
                 model_fields[f.name] = serialized

@@ -1,38 +1,28 @@
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Awaitable,
-    Callable,
-    Collection,
-    Optional,
-    TypeVar,
-    Union,
-)
+from __future__ import annotations
+
+from typing import Any, Callable, Coroutine, Type, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
 from typing_extensions import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from .attributes import RedisCollection
-    from .model import Model
-
-F = TypeVar("F", str, bool, int, float, bytes, memoryview)
-M = TypeVar("M", bound="Model")
-C = TypeVar("C", bound=Union[str, bool, int, float, bytes, memoryview, "Model"])
-
-RedisValue = FieldT
-Key = Union[int, KeyT]
-Serializable = Union[RedisValue, "Model", "RedisCollection"]
-Serialized = Union[RedisValue, "Model", "RedisCollection", None]
-Deserialized = Union[
-    Optional[F],
-    Awaitable[Optional[F]],
-    Awaitable[Collection[Any]],
-]
-Deserializer = Callable[..., Deserialized[F]]
+Key = KeyT
+T = TypeVar("T", bound="IModel")
 
 
 @runtime_checkable
-class SupportsSave(Protocol):
+class IModel(Protocol):
     async def save(self, optimistic: bool) -> None:
         ...
+
+    @classmethod
+    async def get(cls: Type[T], id: Key, **kwargs: Any) -> T:
+        ...
+
+    async def total_count(self) -> int:
+        ...
+
+
+RedisValue = FieldT
+Serializable = Union[RedisValue, IModel]
+Serialized = Union[RedisValue, IModel, None]
+Deserializer = Callable[..., Union[Any, Coroutine[Any, Any, Any]]]

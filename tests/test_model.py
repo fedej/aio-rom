@@ -57,14 +57,14 @@ class ModelTestCase(TestCase):
         setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
-        await ForTesting(123, 123).save()
+        await ForTesting("123", 123).save()
         self.mock_redis_transaction.hset.assert_called_with(
             "fortesting:123", mapping={"id": "123", "f1": "123", "f3": "3"}
         )
-        self.mock_redis_transaction.sadd.assert_called_with("fortesting", 123)
+        self.mock_redis_transaction.sadd.assert_called_with("fortesting", "123")
 
     async def test_update(self) -> None:
-        await ForTesting(123, 123).update(f1=987)
+        await ForTesting("123", 123).update(f1=987)
         self.mock_redis_transaction.hset.assert_called_once_with(
             "fortesting:123", "f1", "987"
         )
@@ -74,15 +74,15 @@ class ModelTestCase(TestCase):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             return_value={"id": "123", "f1": "123"}
         )
-        value = await ForTesting.get(123)
-        assert 123 == value.id
+        value = await ForTesting.get("123")
+        assert "123" == value.id
         assert 123 == value.f1
-        assert ForTesting(123, 123) == value
+        assert ForTesting("123", 123) == value
 
     async def test_failed_get(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(return_value=None)
         with self.assertRaises(ModelNotFoundException):
-            await ForTesting.get(123)
+            await ForTesting.get("123")
 
     async def test_scan(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
@@ -94,7 +94,7 @@ class ModelTestCase(TestCase):
         items = 0
         async for obj in ForTesting.scan():
             assert 123 == obj.f1
-            assert isinstance(obj.id, int)
+            assert isinstance(obj.id, str)
             items += 1
         assert 2 == items
 
@@ -106,19 +106,19 @@ class ModelTestCase(TestCase):
         items = 0
         for obj in await ForTesting.all():
             assert 123 == obj.f1
-            assert isinstance(obj.id, int)
+            assert isinstance(obj.id, str)
             items += 1
         assert 2 == items
 
     async def test_count(self) -> None:
         self.mock_redis_client.scard.side_effect = CoroutineMock(return_value=10)
-        assert 10 == await ForTesting.count()
+        assert 10 == await ForTesting.total_count()
 
     async def test_delete(self) -> None:
         self.mock_redis_client.keys.side_effect = CoroutineMock(
             return_value=["fortesting:123:reference"]
         )
-        await ForTesting(123, 987).delete()
+        await ForTesting("123", 987).delete()
         self.mock_redis_transaction.delete.assert_called_with(
             "fortesting:123:reference", "fortesting:123"
         )
@@ -135,25 +135,20 @@ class ModelTestCase(TestCase):
         await ForTesting.delete_all()
         delete.assert_called_with("fortesting", "fortesting:1")
 
-    async def test_flush(self) -> None:
-        self.mock_redis_client.flushdb.side_effect = CoroutineMock()
-        await ForTesting.flush()
-        self.mock_redis_client.flushdb.assert_called_once()
-
     async def test_exists(self) -> None:
         self.mock_redis_client.exists.side_effect = CoroutineMock(
             side_effect=[True, False, True, False]
         )
         assert await ForTesting.persisted(1)
         assert not await ForTesting.persisted(1)
-        assert await ForTesting(1, 123).exists()
-        assert not await ForTesting(1, 123).exists()
+        assert await ForTesting("1", 123).exists()
+        assert not await ForTesting("1", 123).exists()
 
     async def test_refresh(self) -> None:
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             return_value={"id": "123", "f1": "124"}
         )
-        value = await ForTesting(123, 123).refresh()
-        assert 123 == value.id
+        value = await ForTesting("123", 123).refresh()
+        assert "123" == value.id
         assert 124 == value.f1
-        assert ForTesting(123, 124) == value
+        assert ForTesting("123", 124) == value

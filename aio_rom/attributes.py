@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABCMeta, abstractmethod
-from dataclasses import MISSING, is_dataclass
+from dataclasses import MISSING
 from typing import (
     Any,
     AsyncIterator,
+    Awaitable,
     Callable,
     Collection,
-    Dict,
     Generic,
     Iterable,
     Iterator,
@@ -18,44 +18,43 @@ from typing import (
     Optional,
     Set,
     Type,
+    TypeVar,
     Union,
     cast,
     overload,
 )
 
 from aioredis.client import Pipeline
-from typing_extensions import SupportsIndex, TypeGuard
 
-from .exception import ModelNotLoadedException
 from .session import connection, transaction
-from .types import C, Key, M
+from .types import IModel, Key, RedisValue, Serializable
+
+T = TypeVar("T")
+S = TypeVar("S", bound=Serializable)
+M = TypeVar("M", bound=IModel)
 
 
-def is_model(model: object) -> TypeGuard[M]:
-    return is_dataclass(model) and hasattr(model, "prefix")
-
-
-class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
-    def __init__(self, key: Key, values: Collection[C], **kwargs: Any):
-        self.key = str(key) if isinstance(key, int) else key
+class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
+    def __init__(self, id: Key, values: Optional[Collection[T]], **kwargs: Any):
+        self.id = id
         self.values = values
 
     @classmethod
-    async def from_key(
-        cls,
-        default_factory: Callable[[], "RedisCollection"[C]],
+    async def deserialize(
+        cls: Type[RedisCollection[T]],
+        default_factory: Callable[[], RedisCollection[T]],
         key: Key,
         eager: bool = False,
         **kwargs: Any,
-    ) -> "RedisCollection"[C]:
-        values = await cls.get_values_for_key(key)
-        if values is None:
-            return default_factory() if default_factory != MISSING else None
+    ) -> RedisCollection[T]:
+        redis_key = str(key) if isinstance(key, int) else key
+        async with connection() as conn:
+            if not bool(await conn.exists(redis_key)):
+                if default_factory is MISSING:  # type: ignore[comparison-overlap]
+                    raise AttributeError(f"Missing {str(key)} needs a default_factory")
+                return default_factory()
 
-        collection = cls(key, values, **kwargs)
-        if eager:
-            await collection.load()
-        return collection
+        return await cls.get(redis_key, eager=eager, **kwargs)
 
     def __eq__(self, other: object) -> bool:
         return self.values == getattr(other, "values", other)
@@ -64,260 +63,193 @@ class RedisCollection(Collection[C], Generic[C], metaclass=ABCMeta):
     async def do_save(
         self,
         tr: Pipeline,
-        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+        values: Collection[Any],
+        optimistic: bool,
     ) -> None:
         pass
 
     async def save(self, optimistic: bool = False) -> None:
         if self.values:
-            watch = [self.key] if optimistic else []
+            watch = [self.id] if optimistic else []
             async with transaction(*watch) as tr:
-                await tr.delete(self.key)
-                await self.do_save(tr, self.values)  # type: ignore[arg-type]
+                await tr.delete(self.id)
+                await self.do_save(tr, self.values, optimistic)
 
-    async def load(self) -> None:
+    @classmethod
+    async def get(
+        cls: Type[RedisCollection[T]],
+        id: Key,
+        **kwargs: Any,
+    ) -> RedisCollection[T]:
+        async with connection():
+            eager = kwargs.pop("eager", False)
+            values = await cls.get_values(id, **kwargs) if eager else None
+            return cls(id, values, **kwargs)
+
+    @classmethod
+    async def get_values(cls, id: Key, **kwargs: Any) -> Collection[T]:
         pass
 
     @classmethod
     @abstractmethod
-    async def get_values_for_key(cls, key: Key) -> Collection[C]:
+    def wrap(cls, values: Iterable[T]) -> Collection[T]:
         pass
 
-    @property
-    def values(self) -> Collection[C]:
-        return self._values
-
-    @values.setter
-    def values(self, values: Collection[C]) -> None:
-        self._values: Collection[C] = values
-
-    def __iter__(self) -> Iterator[C]:
-        return filter(None, iter(self.values))
+    def __iter__(self) -> Iterator[T]:
+        return filter(None, iter(self.values or []))
 
     def __len__(self) -> int:
-        return len(self.values)
+        return len(self.values) if self.values else 0
 
     def __contains__(self, x: object) -> bool:
-        return x in self.values
+        return self.values is not None and x in self.values
 
 
-class RedisSet(RedisCollection[C], Set[C], Generic[C]):
+class RedisSet(RedisCollection[S], Set[S]):
     @classmethod
-    async def get_values_for_key(cls, key: Key) -> Set[C]:
+    async def get_values(cls, id: Key, **kwargs: Any) -> Set[S]:
         async with connection() as conn:
-            key = str(key) if isinstance(key, int) else key
+            key = str(id) if isinstance(id, int) else id
             return {json.loads(value) for value in await conn.smembers(key)}
 
+    @classmethod
+    def wrap(cls, values: Iterable[S]) -> Set[S]:
+        return set(values)
+
     async def do_save(
         self,
         tr: Pipeline,
-        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+        values: Collection[RedisValue],
+        optimistic: bool,
     ) -> None:
-        await tr.sadd(self.key, *values)
+        await tr.sadd(self.id, *values)
 
-    def add(self, value: C) -> None:
-        cast(Set[C], super().values).add(value)
+    def add(self, value: S) -> None:
+        cast(Set[S], self.values).add(value)
 
-    def discard(self, value: C) -> None:
-        cast(Set[C], super().values).discard(value)
+    def discard(self, value: S) -> None:
+        cast(Set[S], self.values).discard(value)
+
+    async def total_count(self) -> int:
+        async with connection() as conn:
+            return int(await conn.scard(self.id))
 
 
-class RedisList(RedisCollection[C], MutableSequence[C], Generic[C]):
+class RedisList(RedisCollection[S], MutableSequence[S]):
     @classmethod
-    async def get_values_for_key(cls, key: Key) -> List[C]:
+    def wrap(cls, values: Iterable[S]) -> MutableSequence[S]:
+        return list(values)
+
+    @classmethod
+    async def get_values(cls, id: Key, **kwargs: Any) -> MutableSequence[S]:
         async with connection() as redis:
-            key = str(key) if isinstance(key, int) else key
+            key = str(id) if isinstance(id, int) else id
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
 
+    async def total_count(self) -> int:
+        async with connection() as conn:
+            return int(await conn.llen(self.id))
+
     async def do_save(
         self,
         tr: Pipeline,
-        values: Collection[Union[str, bool, int, float, bytes, memoryview]],
+        values: Collection[RedisValue],
+        optimistic: bool,
     ) -> None:
-        await tr.rpush(self.key, *values)
+        await tr.rpush(self.id, *values)
 
-    def insert(self, index: int, value: C) -> None:
-        cast(List[C], super().values).insert(index, value)
+    def insert(self, index: int, value: S) -> None:
+        cast(List[S], self.values).insert(index, value)
 
     @overload
-    def __getitem__(self, i: int) -> C:
+    def __getitem__(self, i: int) -> S:
         ...
 
     @overload
-    def __getitem__(self, i: slice) -> List[C]:
+    def __getitem__(self, i: slice) -> List[S]:
         ...
 
-    def __getitem__(self, i: Union[int, slice]) -> Union[C, List[C]]:
-        return cast(List[C], super().values).__getitem__(i)
+    def __getitem__(self, i: Union[int, slice]) -> Union[S, List[S]]:
+        return cast(List[S], self.values).__getitem__(i)
 
     @overload
-    def __setitem__(self, index: int, o: C) -> None:
+    def __setitem__(self, index: int, o: S) -> None:
         ...
 
     @overload
-    def __setitem__(self, index: slice, o: Iterable[C]) -> None:
+    def __setitem__(self, index: slice, o: Iterable[S]) -> None:
         ...
 
-    def __setitem__(self, i: Union[int, slice], o: Union[C, Iterable[C]]) -> None:
+    def __setitem__(self, i: Union[int, slice], o: Union[S, Iterable[S]]) -> None:
         if isinstance(i, slice) and isinstance(o, Iterable):
-            cast(List[C], super().values).__setitem__(i, o)
+            cast(List[S], self.values).__setitem__(i, o)
         elif isinstance(i, int) and not isinstance(o, Iterable):
-            cast(List[C], super().values).insert(i, o)
+            cast(List[S], self.values).insert(i, o)
 
     def __delitem__(self, i: Union[int, slice]) -> None:
-        cast(List[C], super().values).__delitem__(i)
+        cast(List[S], self.values).__delitem__(i)
 
 
-class ModelCollection(RedisCollection[M], AsyncIterator[M], metaclass=ABCMeta):
+class ModelCollection(
+    RedisCollection[M], AsyncIterator[M], Generic[M], metaclass=ABCMeta
+):
     def __init__(
         self,
         key: Key,
-        keys: Collection[Union[Key, M]],
-        model_class: Type[M],
-        cascade: bool,
+        values: Optional[Collection[M]],
+        model_class: Optional[Type[M]] = None,
+        cascade: bool = False,
     ):
-        super().__init__(
-            key, cast(List[M], [value for value in keys if is_model(value)])
-        )
-        self._cache.update(
-            {key: None for key in keys if isinstance(key, (int, str, bytes))}
-        )
+        super().__init__(key, values)
         self._model_class = model_class
         self._cascade = cascade
+        self._iter: Optional[Iterator[Awaitable[M]]] = None
+
+    async def do_save(
+        self, tr: Pipeline, values: Collection[Any], optimistic: bool
+    ) -> None:
+        ids = [value.id for value in values if hasattr(value, "id")]
+        await super().do_save(tr, ids, optimistic)
+        if self._cascade:
+            await asyncio.gather(*[v.save(optimistic=optimistic) for v in values])
 
     @classmethod
-    def serialize(
-        cls,
-        key: Key,
-        keys: Union[Collection[Key], ModelCollection[M]],
-        model_class: Type[M],
-        cascade: bool = False,
-    ) -> ModelCollection[M]:
-        return (
-            keys
-            if isinstance(keys, ModelCollection)
-            else cls(key, keys, model_class, cascade)
-        )
-
-    async def do_save(self, tr: Pipeline, values: Collection[C]) -> None:
-        await super().do_save(tr, list(self._cache.keys()))
-
-    async def save(self, optimistic: bool = False) -> None:
-        async with transaction():
-            await super().save(optimistic=optimistic)
-            if self._cascade and self.values:
-                await asyncio.gather(
-                    *[v.save(optimistic=optimistic) for v in self.values]
-                )
-
-    async def load(self) -> None:
+    async def get_values(cls, id: Key, **kwargs: Any) -> Any:
+        model_class = kwargs.get("model_class")
+        if not model_class:
+            raise TypeError("Missing model_class for ModelCollection")
+        if not issubclass(model_class, IModel):
+            raise TypeError(f"{model_class} is not a subclass of IModel")
         async with connection():
-            await asyncio.gather(*[self._get_item(key) for key in self._cache.keys()])
-
-    @property
-    def values(self) -> Collection[M]:
-        return list(filter(None, self._cache.values()))
-
-    @values.setter
-    def values(self, values: Collection[M]) -> None:
-        self._cache: Dict[Key, Optional[M]] = {v.id: v for v in values}
-
-    async def _get_item(self, key: Key) -> M:
-        value = self._cache.get(key, None)
-        if not value:
-            value = await self._model_class.get(key)
-            self._cache[key] = value
-        return value
+            keys = await super().get_values(id, **kwargs)
+            return cls.wrap(
+                await asyncio.gather(*[model_class.get(key) for key in keys])
+            )
 
     def __aiter__(self) -> AsyncIterator[M]:
-        self._iter = map(self._get_item, self._cache.keys())
+        self._iter = None
         return self
 
     async def __anext__(self) -> M:
+        if self._iter is None:
+            if self._model_class is None:
+                raise TypeError("model class is missing")
+            keys = cast(Collection[Key], await super().get_values(self.id))
+            self._iter = map(self._model_class.get, keys)
         try:
             return await next(self._iter)
         except StopIteration as err:
             raise StopAsyncIteration from err
 
-
-class RedisModelSet(ModelCollection[M], RedisSet[M], Generic[M]):
-    @property
-    def values(self) -> Set[M]:
-        return set(super().values)
-
-    @values.setter
-    def values(self, values: Collection[M]) -> None:
-        super(RedisModelSet, type(self)).values.fset(self, values)  # type: ignore[attr-defined] # noqa: E501
-
-    def add(self, value: M) -> None:
-        self._cache[value.id] = value
-
-    def discard(self, value: M) -> None:
-        self._cache.pop(value.id)
+    async def load(self: ModelCollection[IModel]) -> None:
+        self.values = await type(self).get_values(
+            self.id, model_class=self._model_class
+        )
 
 
-class RedisModelList(ModelCollection[M], RedisList[M], Generic[M]):
-    @property
-    def values(self) -> List[M]:
-        return list(super().values)
+class RedisModelSet(ModelCollection[IModel], RedisSet[IModel]):
+    pass
 
-    @values.setter
-    def values(self, values: Collection[C]) -> None:
-        super(RedisModelList, type(self)).values.fset(self, values)  # type: ignore[attr-defined] # noqa: E501
 
-    def _get_cached_item(self, key: Key) -> M:
-        if key in self._cache:
-            value = self._cache[key]
-            if not value:
-                raise ModelNotLoadedException(
-                    f"{self._model_class.__name__} id {key!r} was not loaded"
-                )
-            return value
-        else:
-            raise KeyError
-
-    def insert(self, index: int, value: M) -> None:
-        super().insert(index, value)
-        self._cache[value.id] = value
-
-    @overload
-    def __getitem__(self, index: int) -> M:
-        ...
-
-    @overload
-    def __getitem__(self, index: slice) -> List[M]:
-        ...
-
-    def __getitem__(self, i: Union[int, slice]) -> Union[M, List[M]]:
-        if isinstance(i, slice):
-            return [
-                self._get_cached_item(super().__getitem__(index).id)
-                for index in range(*i.indices(len(self)))
-            ]
-        else:
-            return self._get_cached_item(super().__getitem__(i).id)
-
-    @overload
-    def __setitem__(self, index: int, o: M) -> None:
-        ...
-
-    @overload
-    def __setitem__(self, index: slice, o: Iterable[M]) -> None:
-        ...
-
-    def __setitem__(self, i: Union[int, slice], o: Union[M, Iterable[M]]) -> None:
-        if isinstance(i, slice) and isinstance(o, SupportsIndex):
-            for obj_index, index in enumerate(range(*i.indices(len(self)))):
-                self.insert(index, o[obj_index])
-        elif not isinstance(i, slice) and not isinstance(o, Iterable):
-            self.insert(i, o)
-        else:
-            raise ValueError
-
-    def __delitem__(self, i: Union[int, slice]) -> None:
-        if isinstance(i, slice):
-            for index in range(*i.indices(len(self))):
-                del self._cache[super().__getitem__(index).id]
-        else:
-            del self._cache[super().__getitem__(i).id]
-        super().__delitem__(i)
+class RedisModelList(ModelCollection[IModel], RedisList[IModel]):
+    pass
