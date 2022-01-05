@@ -6,19 +6,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import field, fields, replace
 from inspect import signature
-from typing import (
-    Any,
-    AsyncIterator,
-    Dict,
-    Generic,
-    Mapping,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import Any, AsyncIterator, Generic, Mapping, Type, TypeVar, cast
 
 from .exception import ModelNotFoundException
 from .fields import deserialize, has_default, is_transient, serialize
@@ -34,7 +22,7 @@ M = TypeVar("M", bound="Model")
 class ModelDataclassType(type, Generic[M]):
     @classmethod
     def __prepare__(  # type: ignore[override]
-        mcs, name: str, bases: Tuple[type, ...], **kwds: Any
+        mcs, name: str, bases: tuple[type, ...], **kwds: Any
     ) -> Mapping[str, Any]:
         ns = super().__prepare__(name, bases)
         return {
@@ -47,15 +35,15 @@ class ModelDataclassType(type, Generic[M]):
     def __new__(
         mcs,
         name: str,
-        bases: Tuple[type, ...],
-        namespace: Dict[str, Any],
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
         init: bool = True,
         repr: bool = True,
         eq: bool = True,
         order: bool = False,
         unsafe_hash: bool = False,
         frozen: bool = False,
-    ) -> "ModelDataclassType[M]":
+    ) -> ModelDataclassType[M]:
         cls = cast(Type[M], super().__new__(mcs, name, bases, namespace))
         return dataclasses.dataclass(
             init=init,
@@ -74,9 +62,9 @@ class Model(metaclass=ModelDataclassType):
         return f"{cls.__name__.lower()}"
 
     @classmethod
-    async def get(cls: Type[M], id: Key) -> M:
+    async def get(cls: type[M], id: Key) -> M:
         async with connection() as conn:
-            db_item: Dict[str, RedisValue] = await conn.hgetall(
+            db_item: dict[str, RedisValue] = await conn.hgetall(
                 f"{cls.prefix()}:{str(id)}"
             )
 
@@ -94,7 +82,7 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    def from_dict(cls: Type[M], model: Dict[str, Any], strict: bool = True) -> M:
+    def from_dict(cls: type[M], model: dict[str, Any], strict: bool = True) -> M:
         parameters = signature(cls).parameters
         return (
             cls(**{k: v for k, v in model.items() if k in parameters})
@@ -103,9 +91,7 @@ class Model(metaclass=ModelDataclassType):
         )
 
     @classmethod
-    async def scan(
-        cls: Type[M], **kwargs: Union[Optional[str], Optional[int]]
-    ) -> AsyncIterator[M]:
+    async def scan(cls: type[M], **kwargs: str | None | int | None) -> AsyncIterator[M]:
         async with connection() as conn:
             found = set()
             async for key in conn.sscan_iter(cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
@@ -118,7 +104,7 @@ class Model(metaclass=ModelDataclassType):
                         _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @classmethod
-    async def all(cls: Type[M]) -> Iterable[M]:
+    async def all(cls: type[M]) -> Iterable[M]:
         async with connection() as conn:
             keys = await conn.smembers(cls.prefix())
             return await asyncio.gather(*[cls.get(key) for key in keys])
@@ -129,14 +115,14 @@ class Model(metaclass=ModelDataclassType):
             return int(await conn.scard(cls.prefix()))
 
     @classmethod
-    async def delete_all(cls: Type[M]) -> None:
+    async def delete_all(cls: type[M]) -> None:
         key_prefix = cls.prefix()
         async with connection() as conn:
             keys = await conn.keys(f"{key_prefix}:*")
             await conn.delete(key_prefix, *keys)
 
     @classmethod
-    async def persisted(cls: Type[M], id: int) -> bool:
+    async def persisted(cls: type[M], id: int) -> bool:
         async with connection() as conn:
             return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
@@ -161,7 +147,7 @@ class Model(metaclass=ModelDataclassType):
 
     async def _serialized_model(
         self: M, optimistic: bool, **changes: Any
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         model_fields = {}
         for f in [
             f

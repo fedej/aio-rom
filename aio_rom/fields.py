@@ -7,7 +7,7 @@ from asyncio.coroutines import iscoroutine
 from collections.abc import MutableSequence
 from dataclasses import MISSING, Field
 from functools import partial
-from typing import AbstractSet, Any, Awaitable, Callable, Optional, TypeVar, Union
+from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
 from typing_extensions import TypedDict, TypeGuard, get_args, get_origin
 
@@ -42,7 +42,7 @@ def is_cascade(dataclass_field: Field[Any]) -> bool:
     return dataclass_field.metadata.get("cascade", False)
 
 
-def default_is_not_missing(value: object) -> TypeGuard[Optional[Serializable]]:
+def default_is_not_missing(value: object) -> TypeGuard[Serializable | None]:
     return value is not MISSING
 
 
@@ -50,7 +50,7 @@ def factory_is_not_missing(value: object) -> TypeGuard[Callable[[], Serializable
     return value is not MISSING
 
 
-async def deserialize(dataclass_field: Field[T], value: Optional[RedisValue]) -> Any:
+async def deserialize(dataclass_field: Field[T], value: RedisValue | None) -> Any:
     if value is None:
         if type(None) in get_args(dataclass_field.type):
             return None
@@ -79,13 +79,13 @@ def serialize(value: Any, *_: Any) -> Serialized:
 @serialize.register(int)
 @serialize.register(float)
 @serialize.register(bool)
-def _(value: Union[int, float, bool], *_: Any) -> str:
+def _(value: int | float | bool, *_: Any) -> str:
     return json.dumps(value)
 
 
 @serialize.register(type(None))
 @serialize.register(str)
-def _(value: Optional[str], *_: Any) -> Optional[str]:
+def _(value: str | None, *_: Any) -> str | None:
     return value
 
 
@@ -148,7 +148,7 @@ def field_deserializer(
 
             async def deserializer(
                 key: Key,
-            ) -> Optional[IModel]:
+            ) -> IModel | None:
                 if key is None:
                     return None
                 return await model_class.get(key)

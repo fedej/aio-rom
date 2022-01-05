@@ -15,11 +15,8 @@ from typing import (
     Iterator,
     List,
     MutableSequence,
-    Optional,
     Set,
-    Type,
     TypeVar,
-    Union,
     cast,
     overload,
 )
@@ -35,13 +32,13 @@ M = TypeVar("M", bound=IModel)
 
 
 class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
-    def __init__(self, id: Key, values: Optional[Collection[T]], **kwargs: Any):
+    def __init__(self, id: Key, values: Collection[T] | None, **kwargs: Any):
         self.id = id
         self.values = values
 
     @classmethod
     async def deserialize(
-        cls: Type[RedisCollection[T]],
+        cls: type[RedisCollection[T]],
         default_factory: Callable[[], RedisCollection[T]],
         key: Key,
         eager: bool = False,
@@ -77,7 +74,7 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
 
     @classmethod
     async def get(
-        cls: Type[RedisCollection[T]],
+        cls: type[RedisCollection[T]],
         id: Key,
         **kwargs: Any,
     ) -> RedisCollection[T]:
@@ -107,13 +104,13 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
 
 class RedisSet(RedisCollection[S], Set[S]):
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> Set[S]:
+    async def get_values(cls, id: Key, **kwargs: Any) -> set[S]:
         async with connection() as conn:
             key = str(id) if isinstance(id, int) else id
             return {json.loads(value) for value in await conn.smembers(key)}
 
     @classmethod
-    def wrap(cls, values: Iterable[S]) -> Set[S]:
+    def wrap(cls, values: Iterable[S]) -> set[S]:
         return set(values)
 
     async def do_save(
@@ -166,10 +163,10 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
         ...
 
     @overload
-    def __getitem__(self, i: slice) -> List[S]:
+    def __getitem__(self, i: slice) -> list[S]:
         ...
 
-    def __getitem__(self, i: Union[int, slice]) -> Union[S, List[S]]:
+    def __getitem__(self, i: int | slice) -> S | list[S]:
         return cast(List[S], self.values).__getitem__(i)
 
     @overload
@@ -180,13 +177,13 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
     def __setitem__(self, index: slice, o: Iterable[S]) -> None:
         ...
 
-    def __setitem__(self, i: Union[int, slice], o: Union[S, Iterable[S]]) -> None:
+    def __setitem__(self, i: int | slice, o: S | Iterable[S]) -> None:
         if isinstance(i, slice) and isinstance(o, Iterable):
             cast(List[S], self.values).__setitem__(i, o)
         elif isinstance(i, int) and not isinstance(o, Iterable):
             cast(List[S], self.values).insert(i, o)
 
-    def __delitem__(self, i: Union[int, slice]) -> None:
+    def __delitem__(self, i: int | slice) -> None:
         cast(List[S], self.values).__delitem__(i)
 
 
@@ -196,14 +193,14 @@ class ModelCollection(
     def __init__(
         self,
         key: Key,
-        values: Optional[Collection[M]],
-        model_class: Optional[Type[M]] = None,
+        values: Collection[M] | None,
+        model_class: type[M] | None = None,
         cascade: bool = False,
     ):
         super().__init__(key, values)
         self._model_class = model_class
         self._cascade = cascade
-        self._iter: Optional[Iterator[Awaitable[M]]] = None
+        self._iter: Iterator[Awaitable[M]] | None = None
 
     async def do_save(
         self, tr: Pipeline, values: Collection[Any], optimistic: bool
