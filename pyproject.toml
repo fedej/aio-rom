@@ -25,7 +25,7 @@ include = ["aio_rom/py.typed"]
 [tool.poetry.dependencies]
 python = "^3.7"
 aioredis = "2.0.1"
-typing-extensions = ">=3.10,<5.0"
+typing-extensions = ">=4.0.1,<5.0"
 mypy = {version = ">=0.920,<0.931", optional = true, markers = "platform_python_implementation == 'CPython'"}
 
 [tool.poetry.dev-dependencies]

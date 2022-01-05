@@ -40,7 +40,7 @@ class Benchmark(TestCase):
         await Foo.delete_all()
 
     def setUp(self) -> None:
-        self.bar = Bar(1, 123, "value", [1, 2, 3])
+        self.bar = Bar("1", 123, "value", [1, 2, 3])
         asyncio.run(self.bar.save())
 
     def tearDown(self) -> None:
@@ -58,33 +58,33 @@ class Benchmark(TestCase):
         async def get() -> None:
             async with connection():
                 for _ in range(self.items):
-                    await Bar.get(1)
+                    await Bar.get("1")
 
         self.benchmark(self.run_coro, get)
 
     def test_get_eager_list(self) -> None:
-        foo = Foo(1)
+        foo = Foo("1")
         for i in range(self.items):
-            foo.bars.append(Bar(i, 123, "value", [1, 2, 3]))
+            foo.bars.append(Bar(str(i), 123, "value", [1, 2, 3]))
         asyncio.run(foo.save())
 
         async def get() -> Foo:
             async with connection():
-                return await Foo.get(1)
+                return await Foo.get("1")
 
         result = self.benchmark(self.run_coro, get)
         assert self.items == len(result.bars)
 
     def test_get_all(self) -> None:
         for i in range(self.items):
-            asyncio.run(Bar(i, 123, "value", [1, 2, 3]).save())
+            asyncio.run(Bar(str(i), 123, "value", [1, 2, 3]).save())
 
         result = self.benchmark(self.run_coro, Bar.all)
         assert self.items == len(result)
 
     def test_scan_all(self) -> None:
         for i in range(self.items):
-            asyncio.run(Bar(i, 123, "value", [1, 2, 3]).save())
+            asyncio.run(Bar(str(i), 123, "value", [1, 2, 3]).save())
 
         async def scan() -> List[Bar]:
             result = []
@@ -96,7 +96,7 @@ class Benchmark(TestCase):
         assert self.items == len(result)
 
     def test_cascade_save(self) -> None:
-        foo = Foo(1)
+        foo = Foo("1")
         for i in range(self.items):
-            foo.bars.append(Bar(i, 123, "value", [1, 2, 3]))
+            foo.bars.append(Bar(str(i), 123, "value", [1, 2, 3]))
         self.benchmark(self.run_coro, foo.save)

@@ -471,7 +471,7 @@ mypy = ["mypy"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "900dec37070184f9ac4fe0ad806799b96aee5cf2b70bf7d42f5be7b829cdca8a"
+content-hash = "562cc6c5ed06a06f4dc3d4adab27bcaf7c65ba4dcd8a0566b1326ed0570cf78c"
 
 [metadata.files]
 aioredis = [
