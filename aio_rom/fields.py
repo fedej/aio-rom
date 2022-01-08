@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import collections.abc
+import dataclasses
 import functools
 import json
 from asyncio.coroutines import iscoroutine
 from collections.abc import MutableSequence
-from dataclasses import MISSING, Field
+from dataclasses import MISSING
 from functools import partial
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 
-from typing_extensions import TypedDict, TypeGuard, get_args, get_origin
+from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
 
 from .attributes import RedisList, RedisModelList, RedisModelSet, RedisSet
 from .types import Deserializer, IModel, Key, RedisValue, Serializable, Serialized
@@ -17,29 +18,68 @@ from .types import Deserializer, IModel, Key, RedisValue, Serializable, Serializ
 T = TypeVar("T")
 
 
-class Metadata(TypedDict, total=False):
-    transient: bool
-    cascade: bool
-    eager: bool
+@dataclasses.dataclass
+class Metadata:
+    transient: bool = False
+    cascade: bool = False
+    eager: bool = False
 
 
-def is_transient(dataclass_field: Field[Any]) -> bool:
-    return dataclass_field.metadata.get("transient", False)
+@dataclasses.dataclass(unsafe_hash=True)
+class Field:
+    name: str
+    origin: type
+    args: tuple[type, ...]
+    transient: bool = False
+    cascade: bool = False
+    eager: bool = False
+
+    @property
+    def optional(self) -> bool:
+        return len(self.args) == 2 and type(None) in self.args
+
+    @property
+    def type(self) -> type:
+        if self.optional or (not isinstance(self.origin, type) and self.args):
+            return self.args[0]
+        else:
+            return self.origin
 
 
-def has_default(dataclass_field: Field[Any]) -> bool:
-    return (
-        dataclass_field.default is not MISSING
-        or dataclass_field.default_factory is not MISSING  # type: ignore[comparison-overlap]  # noqa: E501
-    )
+@functools.lru_cache()
+def type_fields(obj: type) -> list[Field]:
+    fields_list: list[Field] = []
+    origin: type
+    args: tuple[type, ...]
+    for name, value in get_type_hints(obj, include_extras=True).items():
+        if isinstance(value, type):
+            fields_list.append(Field(name, value, ()))
+        elif hasattr(value, "__metadata__"):
+            if isinstance(value.__args__[0], type):
+                origin = value.__args__[0]
+                args = ()
+            else:
+                origin = get_origin(value.__args__[0])  # type: ignore[assignment]
+                args = get_args(value.__args__[0])
+            metadata = next(
+                filter(
+                    lambda x: isinstance(x, Metadata),
+                    getattr(value, "__metadata__", ()),
+                ),
+                None,
+            )
+            metadata = dataclasses.asdict(metadata) if metadata else {}
+            fields_list.append(Field(name, origin, args, **metadata))
+        else:
+            origin = get_origin(value)  # type: ignore[assignment]
+            args = get_args(value)
+            fields_list.append(Field(name, origin, args))
+
+    return fields_list
 
 
-def is_eager(dataclass_field: Field[Any]) -> bool:
-    return dataclass_field.metadata.get("eager", False)
-
-
-def is_cascade(dataclass_field: Field[Any]) -> bool:
-    return dataclass_field.metadata.get("cascade", False)
+def fields(obj: Any) -> list[Field]:
+    return type_fields(obj if isinstance(obj, type) else type(obj))
 
 
 def default_is_not_missing(value: object) -> TypeGuard[Serializable | None]:
@@ -50,16 +90,10 @@ def factory_is_not_missing(value: object) -> TypeGuard[Callable[[], Serializable
     return value is not MISSING
 
 
-async def deserialize(dataclass_field: Field[T], value: RedisValue | None) -> Any:
-    if value is None:
-        if type(None) in get_args(dataclass_field.type):
-            return None
-        elif default_is_not_missing(dataclass_field.default):
-            return dataclass_field.default
-        elif factory_is_not_missing(dataclass_field.default_factory):
-            return dataclass_field.default_factory()
-        raise AttributeError(f"Missing value for {dataclass_field.name}")
-    deserializer = field_deserializer(dataclass_field)
+async def deserialize(field: Field, value: RedisValue | None) -> Any:
+    if value is None and field.optional:
+        return None
+    deserializer = field_deserializer(field)
     deserialized_value = deserializer(value)
     if iscoroutine(deserialized_value):
         return await deserialized_value
@@ -90,102 +124,72 @@ def _(value: str | None, *_: Any) -> str | None:
 
 
 @serialize.register(collections.abc.Set)
-def _(
-    values: collections.abc.Set[Any], key: str, dataclass_field: Field[T]
-) -> RedisSet[Any]:
-    type_args = get_args(dataclass_field.type)
+def _(values: collections.abc.Set[Any], key: str, field: Field) -> RedisSet[Any]:
     return (
-        RedisModelSet(
-            key, values, model_class=type_args[0], cascade=is_cascade(dataclass_field)
-        )
-        if type_args and issubclass(type_args[0], IModel)
+        RedisModelSet(key, values, model_class=field.args[0], cascade=field.cascade)
+        if field.args and issubclass(field.args[0], IModel)
         else RedisSet(key, values)
     )
 
 
 @serialize.register(collections.abc.MutableSequence)
 def _(
-    values: collections.abc.MutableSequence[Any], key: str, dataclass_field: Field[T]
+    values: collections.abc.MutableSequence[Any], key: str, field: Field
 ) -> RedisList[Any]:
-    type_args = get_args(dataclass_field.type)
     return (
-        RedisModelList(
-            key, values, model_class=type_args[0], cascade=is_cascade(dataclass_field)
-        )
-        if type_args and issubclass(type_args[0], IModel)
+        RedisModelList(key, values, model_class=field.args[0], cascade=field.cascade)
+        if field.args and issubclass(field.args[0], IModel)
         else RedisList(key, values)
     )
 
 
+@functools.lru_cache()
 def field_deserializer(
-    dataclass_field: Field[T],
+    field: Field,
 ) -> Deserializer:
-    eager = is_eager(dataclass_field)
-    cascade = is_cascade(dataclass_field)
-
-    field_type = dataclass_field.type
-    type_args = get_args(field_type)
-    if type(None) in type_args:
-        # Unwrap optional type
-        field_type = type_args[0]
-
-    origin = get_origin(field_type) or field_type
-
     deserializer: Deserializer = json.loads
-    if dataclass_field.name == "id":
+    if issubclass(field.type, (str, bytes, memoryview)):
 
         def deserializer(value: Any) -> Any:
             return value
 
-    elif isinstance(field_type, type):
-        if issubclass(field_type, (str, bytes, memoryview)):
+    elif issubclass(field.type, IModel):
+        model_class = field.type
 
-            def deserializer(value: Any) -> Any:
-                return value
+        async def deserializer(
+            key: Key,
+        ) -> IModel | None:
+            if key is None:
+                return None
+            return await model_class.get(key)
 
-        elif issubclass(field_type, IModel):
-            model_class = field_type
-
-            async def deserializer(
-                key: Key,
-            ) -> IModel | None:
-                if key is None:
-                    return None
-                return await model_class.get(key)
-
-    elif isinstance(origin, type):
-        type_args = get_args(field_type)
-        if issubclass(origin, AbstractSet):
-            model_class = type_args[0]
-            if issubclass(model_class, IModel):
-                deserializer = partial(
-                    RedisModelSet.deserialize,
-                    dataclass_field.default_factory,
-                    model_class=model_class,
-                    eager=eager,
-                    cascade=cascade,
-                )
-            else:
-                deserializer = partial(
-                    RedisSet.deserialize,
-                    dataclass_field.default_factory,
-                    eager=eager,
-                )
-        elif issubclass(origin, MutableSequence):
-            model_class = type_args[0]
-            if issubclass(model_class, IModel):
-                deserializer = partial(
-                    RedisModelList.deserialize,
-                    dataclass_field.default_factory,
-                    model_class=model_class,
-                    eager=eager,
-                    cascade=cascade,
-                )
-            else:
-                deserializer = partial(
-                    RedisList.deserialize,
-                    dataclass_field.default_factory,
-                    eager=eager,
-                )
+    elif issubclass(field.type, AbstractSet):
+        model_class = field.args[0]
+        if issubclass(model_class, IModel):
+            deserializer = partial(
+                RedisModelSet.get,
+                model_class=model_class,
+                eager=field.eager,
+                cascade=field.cascade,
+            )
+        else:
+            deserializer = partial(
+                RedisSet.get,
+                eager=field.eager,
+            )
+    elif issubclass(field.type, MutableSequence):
+        model_class = field.args[0]
+        if issubclass(model_class, IModel):
+            deserializer = partial(
+                RedisModelList.get,
+                model_class=model_class,
+                eager=field.eager,
+                cascade=field.cascade,
+            )
+        else:
+            deserializer = partial(
+                RedisList.get,
+                eager=field.eager,
+            )
 
     return deserializer

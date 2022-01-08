@@ -11,6 +11,9 @@ T = TypeVar("T", bound="IModel")
 
 @runtime_checkable
 class IModel(Protocol):
+    def db_id(self) -> Key:
+        ...
+
     async def save(self, optimistic: bool) -> None:
         ...
 

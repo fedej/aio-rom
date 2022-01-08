@@ -13,10 +13,9 @@ from mypy.nodes import (
     Var,
 )
 from mypy.plugin import ClassDefContext, Plugin
-from mypy.plugins import dataclasses
 from mypy.types import Instance, TypeType
 
-MODEL_DATACLASS_TYPE_FULLNAME = "aio_rom.model.ModelDataclassType"
+MODEL_DATACLASS_TYPE_FULLNAME = "aio_rom.model.ModelType"
 MODEL_FULLNAME = "aio_rom.model.Model"
 
 
@@ -28,7 +27,6 @@ class AioRomPlugin(Plugin):
     @staticmethod
     def transform(ctx: ClassDefContext) -> None:
         AioRomPlugin.add_exception_to_class(ctx)
-        dataclasses.dataclass_class_maker_callback(ctx)
 
     @staticmethod
     def add_exception_to_class(ctx: ClassDefContext) -> None:

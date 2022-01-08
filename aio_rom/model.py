@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import logging
 from collections.abc import Iterable
-from dataclasses import field, fields, replace
 from inspect import signature
-from typing import Any, AsyncIterator, Generic, Mapping, Type, TypeVar, cast
+from typing import Any, AsyncIterator, Generic, Mapping, TypeVar
 
 from .exception import ModelNotFoundException
-from .fields import deserialize, has_default, is_transient, serialize
+from .fields import deserialize, fields, serialize
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue
 
@@ -19,7 +17,7 @@ _logger = logging.getLogger(__name__)
 M = TypeVar("M", bound="Model")
 
 
-class ModelDataclassType(type, Generic[M]):
+class ModelType(type, Generic[M]):
     @classmethod
     def __prepare__(  # type: ignore[override]
         mcs, name: str, bases: tuple[type, ...], **kwds: Any
@@ -32,30 +30,9 @@ class ModelDataclassType(type, Generic[M]):
             **ns,
         }
 
-    def __new__(
-        mcs,
-        name: str,
-        bases: tuple[type, ...],
-        namespace: dict[str, Any],
-        init: bool = True,
-        repr: bool = True,
-        eq: bool = True,
-        order: bool = False,
-        unsafe_hash: bool = False,
-        frozen: bool = False,
-    ) -> ModelDataclassType[M]:
-        cls = cast(Type[M], super().__new__(mcs, name, bases, namespace))
-        return dataclasses.dataclass(
-            init=init,
-            repr=repr,
-            eq=eq,
-            order=order,
-            unsafe_hash=unsafe_hash,
-        )(cls)
 
-
-class Model(metaclass=ModelDataclassType):
-    id: Key = field(init=True, repr=False, compare=False)
+class Model(metaclass=ModelType):
+    id: Key
 
     @classmethod
     def prefix(cls) -> str:
@@ -71,13 +48,16 @@ class Model(metaclass=ModelDataclassType):
         if not db_item:
             raise cls.NotFoundException(f"{str(id)} not found")
 
-        model_fields = [f for f in fields(cls) if not is_transient(f)]
+        model_fields = {f.name: f for f in fields(cls) if not f.transient}
         deserialized = await asyncio.gather(
-            *[deserialize(f, db_item.get(f.name)) for f in model_fields]
+            *[
+                deserialize(model_fields[field_name], value)
+                for field_name, value in db_item.items()
+            ]
         )
 
         return cls.from_dict(
-            {f.name: value for f, value in zip(model_fields, deserialized)},
+            {f: value for f, value in zip(db_item.keys(), deserialized)},
             strict=False,
         )
 
@@ -126,54 +106,46 @@ class Model(metaclass=ModelDataclassType):
         async with connection() as conn:
             return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
-    @property
     def db_id(self) -> str:
         return f"{self.prefix()}:{str(self.id)}"
 
     async def save(self, optimistic: bool = False) -> None:
-        watch = [self.db_id] if optimistic else []
+        watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
-            model_dict = await self._serialized_model(optimistic)
-            await tr.hset(self.db_id, mapping=model_dict)
+            await self.update(optimistic=optimistic)
             await tr.sadd(self.prefix(), self.id)
 
-    async def update(self: M, optimistic: bool = False, **changes: Any) -> M:
-        watch = [self.db_id] if optimistic else []
+    async def update(self, optimistic: bool = False, **changes: Any) -> None:
+        watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
-            model_dict = await self._serialized_model(optimistic, **changes)
-            for key, value in model_dict.items():
-                await tr.hset(self.db_id, key, value)
-            return replace(self, **changes)
+            model_dict = await self.serialize(changes)
+            references = []
+            for name, value in model_dict.items():
+                if isinstance(value, IModel):
+                    references.append(value)
+                    model_dict[name] = value.db_id()
+            await asyncio.gather(*[ref.save(optimistic) for ref in references])
+            await tr.hset(self.db_id(), mapping=model_dict)
+        for name, value in changes.items():
+            setattr(self, name, value)
 
-    async def _serialized_model(
-        self: M, optimistic: bool, **changes: Any
-    ) -> dict[str, Any]:
+    async def serialize(self, changes: dict[str, Any]) -> dict[str, Any]:
         model_fields = {}
         for f in [
             f
             for f in fields(self)
-            if not is_transient(f)
-            and hasattr(self, f.name)
-            and (not changes or f.name in changes)
+            if not f.transient and (not changes or f.name in changes)
         ]:
             value = changes.get(f.name, getattr(self, f.name))
-
-            if not (
-                has_default(f)
-                and isinstance(value, (Iterable, type(None)))
-                and not value
-            ):
-                key = f"{self.db_id}:{f.name}"
+            if value:
+                key = f"{self.db_id()}:{f.name}"
                 serialized = serialize(value, key, f)
-                if isinstance(serialized, IModel):
-                    await serialized.save(optimistic=optimistic)
-                    serialized = key
                 model_fields[f.name] = serialized
 
         return model_fields
 
     async def delete(self) -> None:
-        key = self.db_id
+        key = self.db_id()
         async with connection() as conn:
             keys = await conn.keys(f"{key}:*")
             async with transaction() as tr:
@@ -182,7 +154,7 @@ class Model(metaclass=ModelDataclassType):
 
     async def exists(self) -> bool:
         async with connection() as conn:
-            return bool(await conn.exists(self.db_id))
+            return bool(await conn.exists(self.db_id()))
 
     async def refresh(self: M) -> M:
         return await type(self).get(self.id)

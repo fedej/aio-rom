@@ -1,10 +1,13 @@
+import dataclasses
 import os
 import sys
 from dataclasses import field
 from typing import List, Optional, Set
 from unittest import skipUnless
 
-from aio_rom import Model
+from typing_extensions import Annotated
+
+from aio_rom import DataclassModel as Model
 from aio_rom.attributes import RedisModelSet
 
 if sys.version_info >= (3, 8):
@@ -20,27 +23,30 @@ from aio_rom.fields import Metadata
 from aio_rom.session import connection
 
 
-class Bar(Model, unsafe_hash=True):
-    field1: int
+@dataclasses.dataclass(unsafe_hash=True)
+class Bar(Model):
+    field1: Annotated[int, Metadata(eager=True)]
     field2: str
-    field3: List[int] = field(
-        default_factory=list, metadata=Metadata(eager=True), hash=False
+    field3: Annotated[List[int], Metadata(eager=True)] = field(
+        default_factory=list, hash=False
     )
     field4: int = 3
 
 
-class Foo(Model, unsafe_hash=True):
-    eager_bars: List[Bar] = field(
-        default_factory=list, metadata=Metadata(eager=True), hash=False
+@dataclasses.dataclass(unsafe_hash=True)
+class Foo(Model):
+    eager_bars: Annotated[List[Bar], Metadata(eager=True)] = field(
+        default_factory=list, hash=False
     )
-    lazy_bars: Set[Bar] = field(
-        default_factory=set, compare=False, metadata=Metadata(cascade=True)
+    lazy_bars: Annotated[Set[Bar], Metadata(cascade=True)] = field(
+        default_factory=set, compare=False
     )
     f1: Optional[str] = None
 
 
+@dataclasses.dataclass
 class FooBar(Model):
-    foos: Set[Foo] = field(metadata=Metadata(cascade=True, eager=True))
+    foos: Annotated[Set[Foo], Metadata(eager=True, cascade=True)]
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
@@ -144,12 +150,12 @@ class RedisIntegrationTestCase(TestCase):
         bar2 = Bar("2", 123, "otherbar", [1, 2, 3, 4])
         await bar2.save()
 
-        foo = await foo.update(lazy_bars={bar2})
+        await foo.update(lazy_bars={bar2})
         async with connection() as redis:
             lazy_bars = await redis.smembers("foo:123:lazy_bars")
             assert {"2"} == lazy_bars
 
-        foo = await foo.update(eager_bars=[bar2])
+        await foo.update(eager_bars=[bar2])
         async with connection() as redis:
             eager_bars = await redis.lrange("foo:123:eager_bars", 0, -1)
             assert ["2"] == eager_bars

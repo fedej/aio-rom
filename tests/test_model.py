@@ -1,3 +1,4 @@
+import dataclasses
 import sys
 from dataclasses import field
 from typing import Optional, Set
@@ -17,10 +18,11 @@ else:
 
     ASYNCTEST = True
 
-from aio_rom import Model
+from aio_rom import DataclassModel as Model
 from aio_rom.exception import ModelNotFoundException
 
 
+@dataclasses.dataclass
 class ForTesting(Model):
     f1: int
     f2: Optional[str] = None
@@ -66,7 +68,7 @@ class ModelTestCase(TestCase):
     async def test_update(self) -> None:
         await ForTesting("123", 123).update(f1=987)
         self.mock_redis_transaction.hset.assert_called_once_with(
-            "fortesting:123", "f1", "987"
+            "fortesting:123", mapping={"f1": "987"}
         )
         self.mock_redis_transaction.sadd.assert_not_called()
 

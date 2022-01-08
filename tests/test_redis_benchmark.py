@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import os
 from dataclasses import field
 from typing import Any, Awaitable, Callable, List
@@ -6,21 +7,24 @@ from unittest import TestCase, skipUnless
 
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
+from typing_extensions import Annotated
 
-from aio_rom import Model
+from aio_rom import DataclassModel as Model
 from aio_rom.fields import Metadata
 from aio_rom.session import connection
 
 
+@dataclasses.dataclass
 class Bar(Model):
     field1: int
     field2: str
     field3: List[int]
 
 
+@dataclasses.dataclass
 class Foo(Model):
-    bars: List[Bar] = field(
-        metadata=Metadata(eager=True, cascade=True), default_factory=list
+    bars: Annotated[List[Bar], Metadata(eager=True, cascade=True)] = field(
+        default_factory=list
     )
 
 

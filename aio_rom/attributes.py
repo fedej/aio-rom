@@ -3,12 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABCMeta, abstractmethod
-from dataclasses import MISSING
 from typing import (
     Any,
     AsyncIterator,
     Awaitable,
-    Callable,
     Collection,
     Generic,
     Iterable,
@@ -36,22 +34,8 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
         self.id = id
         self.values = values
 
-    @classmethod
-    async def deserialize(
-        cls: type[RedisCollection[T]],
-        default_factory: Callable[[], RedisCollection[T]],
-        key: Key,
-        eager: bool = False,
-        **kwargs: Any,
-    ) -> RedisCollection[T]:
-        redis_key = str(key) if isinstance(key, int) else key
-        async with connection() as conn:
-            if not bool(await conn.exists(redis_key)):
-                if default_factory is MISSING:  # type: ignore[comparison-overlap]
-                    raise AttributeError(f"Missing {str(key)} needs a default_factory")
-                return default_factory()
-
-        return await cls.get(redis_key, eager=eager, **kwargs)
+    def db_id(self) -> Key:
+        return self.id
 
     def __eq__(self, other: object) -> bool:
         return self.values == getattr(other, "values", other)
@@ -78,7 +62,9 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
         id: Key,
         **kwargs: Any,
     ) -> RedisCollection[T]:
-        async with connection():
+        async with connection() as conn:
+            if not bool(await conn.exists(id)):
+                raise RuntimeError()
             eager = kwargs.pop("eager", False)
             values = await cls.get_values(id, **kwargs) if eager else None
             return cls(id, values, **kwargs)
