@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import os.path
 import re
@@ -35,7 +37,7 @@ class RomDataSuite(DataSuite):
         mypy_cmdline.append(program_path)
         with open(program_path, "w") as file:
             for s in testcase.input:
-                file.write("{}\n".format(s))
+                file.write(f"{s}\n")
         output = []
         # Type check the program.
         out, err, returncode = api.run(mypy_cmdline)
@@ -54,5 +56,5 @@ class RomDataSuite(DataSuite):
         assert_string_arrays_equal(
             testcase.output,
             output,
-            "Invalid output ({}, line {})".format(testcase.file, testcase.line),
+            f"Invalid output ({testcase.file}, line {testcase.line})",
         )

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import dataclasses
 import os
@@ -90,7 +92,7 @@ class Benchmark(TestCase):
         for i in range(self.items):
             asyncio.run(Bar(str(i), 123, "value", [1, 2, 3]).save())
 
-        async def scan() -> List[Bar]:
+        async def scan() -> list[Bar]:
             result = []
             async for item in Bar.scan():
                 result.append(item)

@@ -120,11 +120,11 @@ class RedisSet(RedisCollection[S], Set[S]):
 
 class RedisList(RedisCollection[S], MutableSequence[S]):
     @classmethod
-    def wrap(cls, values: Iterable[S]) -> MutableSequence[S]:
+    def wrap(cls, values: Iterable[S]) -> list[S]:
         return list(values)
 
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> MutableSequence[S]:
+    async def get_values(cls, id: Key, **kwargs: Any) -> list[S]:
         async with connection() as redis:
             key = str(id) if isinstance(id, int) else id
             return [json.loads(value) for value in await redis.lrange(key, 0, -1)]

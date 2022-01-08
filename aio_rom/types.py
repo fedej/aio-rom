@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine, Type, TypeVar, Union
+from typing import Any, Callable, Coroutine, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
 from typing_extensions import Protocol, runtime_checkable
@@ -18,7 +18,7 @@ class IModel(Protocol):
         ...
 
     @classmethod
-    async def get(cls: Type[T], id: Key, **kwargs: Any) -> T:
+    async def get(cls: type[T], id: Key, **kwargs: Any) -> T:
         ...
 
     async def total_count(self) -> int:

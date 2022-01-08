@@ -1,20 +1,22 @@
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator
 
 from aioredis import ConnectionPool, Redis
 from aioredis.client import Pipeline
 
 from aio_rom.types import Key
 
-POOL: ContextVar[Optional[ConnectionPool]] = ContextVar("pool", default=None)
-CONNECTION: ContextVar[Optional[Redis]] = ContextVar("connection", default=None)
-TRANSACTION: ContextVar[Optional[Pipeline]] = ContextVar("transaction", default=None)
+POOL: ContextVar[ConnectionPool | None] = ContextVar("pool", default=None)
+CONNECTION: ContextVar[Redis | None] = ContextVar("connection", default=None)
+TRANSACTION: ContextVar[Pipeline | None] = ContextVar("transaction", default=None)
 
-config: Dict[str, Any] = {}
+config: dict[str, Any] = {}
 
 
-def configure(address: Optional[str] = None, *args: Any, **kwargs: Any) -> None:
+def configure(address: str | None = None, *args: Any, **kwargs: Any) -> None:
     global config
     config["address"] = address
     config["args"] = args
@@ -23,7 +25,7 @@ def configure(address: Optional[str] = None, *args: Any, **kwargs: Any) -> None:
 
 @asynccontextmanager
 async def redis_pool(
-    address: Optional[str] = None, **kwargs: Any
+    address: str | None = None, **kwargs: Any
 ) -> AsyncIterator[ConnectionPool]:
     pool = POOL.get()
     if pool:
@@ -44,9 +46,7 @@ async def redis_pool(
 
 
 @asynccontextmanager
-async def connection(
-    address: Optional[str] = None, **kwargs: Any
-) -> AsyncIterator[Redis]:
+async def connection(address: str | None = None, **kwargs: Any) -> AsyncIterator[Redis]:
     connection = CONNECTION.get()
     if connection:
         yield connection
