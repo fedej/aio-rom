@@ -14,6 +14,7 @@ from typing import (
     List,
     MutableSequence,
     Set,
+    Type,
     TypeVar,
     cast,
     overload,
@@ -21,6 +22,7 @@ from typing import (
 
 from aioredis.client import Pipeline
 
+from .exception import ModelNotFoundException
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue, Serializable
 
@@ -30,9 +32,12 @@ M = TypeVar("M", bound=IModel)
 
 
 class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
-    def __init__(self, id: Key, values: Collection[T] | None, **kwargs: Any):
+    def __init__(
+        self, id: Key, values: Collection[T] | None, item_class: Type[T], **kwargs: Any
+    ):
         self.id = id
-        self.values = values
+        self.values = values or self.wrap([])
+        self.item_class = item_class
 
     def db_id(self) -> Key:
         return self.id
@@ -58,19 +63,22 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
 
     @classmethod
     async def get(
-        cls: type[RedisCollection[T]],
+        cls: Type[RedisCollection[T]],
         id: Key,
+        eager: bool = False,
+        item_class: Type[T] | None = None,
         **kwargs: Any,
     ) -> RedisCollection[T]:
+        if item_class is None:
+            raise TypeError("item_class is required")
         async with connection() as conn:
             if not bool(await conn.exists(id)):
-                raise RuntimeError()
-            eager = kwargs.pop("eager", False)
-            values = await cls.get_values(id, **kwargs) if eager else None
-            return cls(id, values, **kwargs)
+                raise ModelNotFoundException(f"Collection with key {str(id)} not found")
+            values = await cls.get_values(id, item_class) if eager else None
+            return cls(id, values, item_class, **kwargs)
 
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> Collection[T]:
+    async def get_values(cls, id: Key, item_class: Type[T]) -> Collection[T]:
         pass
 
     @classmethod
@@ -90,13 +98,15 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
 
 class RedisSet(RedisCollection[S], Set[S]):
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> set[S]:
+    async def get_values(cls, id: Key, item_class: Type[S]) -> Set[S]:
         async with connection() as conn:
-            key = str(id) if isinstance(id, int) else id
-            return {json.loads(value) for value in await conn.smembers(key)}
+            if issubclass(item_class, str):
+                return set(await conn.smembers(id))
+            else:
+                return {json.loads(value) for value in await conn.smembers(id)}
 
     @classmethod
-    def wrap(cls, values: Iterable[S]) -> set[S]:
+    def wrap(cls, values: Iterable[S]) -> Set[S]:
         return set(values)
 
     async def do_save(
@@ -120,14 +130,16 @@ class RedisSet(RedisCollection[S], Set[S]):
 
 class RedisList(RedisCollection[S], MutableSequence[S]):
     @classmethod
-    def wrap(cls, values: Iterable[S]) -> list[S]:
+    def wrap(cls, values: Iterable[S]) -> List[S]:
         return list(values)
 
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> list[S]:
+    async def get_values(cls, id: Key, item_class: Type[S]) -> List[S]:
         async with connection() as redis:
-            key = str(id) if isinstance(id, int) else id
-            return [json.loads(value) for value in await redis.lrange(key, 0, -1)]
+            if issubclass(item_class, str):
+                return list(await redis.lrange(id, 0, -1))
+            else:
+                return [json.loads(value) for value in await redis.lrange(id, 0, -1)]
 
     async def total_count(self) -> int:
         async with connection() as conn:
@@ -149,10 +161,10 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
         ...
 
     @overload
-    def __getitem__(self, i: slice) -> list[S]:
+    def __getitem__(self, i: slice) -> List[S]:
         ...
 
-    def __getitem__(self, i: int | slice) -> S | list[S]:
+    def __getitem__(self, i: int | slice) -> S | List[S]:
         return cast(List[S], self.values).__getitem__(i)
 
     @overload
@@ -164,10 +176,7 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
         ...
 
     def __setitem__(self, i: int | slice, o: S | Iterable[S]) -> None:
-        if isinstance(i, slice) and isinstance(o, Iterable):
-            cast(List[S], self.values).__setitem__(i, o)
-        elif isinstance(i, int) and not isinstance(o, Iterable):
-            cast(List[S], self.values).insert(i, o)
+        self.values.__setitem__(i, o)  # type: ignore
 
     def __delitem__(self, i: int | slice) -> None:
         cast(List[S], self.values).__delitem__(i)
@@ -180,11 +189,11 @@ class ModelCollection(
         self,
         key: Key,
         values: Collection[M] | None,
-        model_class: type[M] | None = None,
+        item_class: Type[M],
         cascade: bool = False,
+        **kwargs: Any,
     ):
-        super().__init__(key, values)
-        self._model_class = model_class
+        super().__init__(key, values, item_class, **kwargs)
         self._cascade = cascade
         self._iter: Iterator[Awaitable[M]] | None = None
 
@@ -197,16 +206,13 @@ class ModelCollection(
             await asyncio.gather(*[v.save(optimistic=optimistic) for v in values])
 
     @classmethod
-    async def get_values(cls, id: Key, **kwargs: Any) -> Any:
-        model_class = kwargs.get("model_class")
-        if not model_class:
-            raise TypeError("Missing model_class for ModelCollection")
-        if not issubclass(model_class, IModel):
-            raise TypeError(f"{model_class} is not a subclass of IModel")
+    async def get_values(cls, id: Key, item_class: Type[M]) -> Any:
+        if not issubclass(item_class, IModel) or item_class is IModel:
+            raise TypeError(f"{item_class} is not a subclass of IModel")
         async with connection():
-            keys = await super().get_values(id, **kwargs)
+            keys = cast(Collection[Key], await super().get_values(id, str))  # type: ignore  # noqa: E501
             return cls.wrap(
-                await asyncio.gather(*[model_class.get(key) for key in keys])
+                await asyncio.gather(*[item_class.get(key) for key in keys])
             )
 
     def __aiter__(self) -> AsyncIterator[M]:
@@ -215,24 +221,22 @@ class ModelCollection(
 
     async def __anext__(self) -> M:
         if self._iter is None:
-            if self._model_class is None:
+            if self.item_class is None:
                 raise TypeError("model class is missing")
-            keys = cast(Collection[Key], await super().get_values(self.id))
-            self._iter = map(self._model_class.get, keys)
+            keys = cast(Collection[Key], await super().get_values(self.id, str))  # type: ignore  # noqa: E501
+            self._iter = map(self.item_class.get, keys)
         try:
             return await next(self._iter)
         except StopIteration as err:
             raise StopAsyncIteration from err
 
     async def load(self: ModelCollection[IModel]) -> None:
-        self.values = await type(self).get_values(
-            self.id, model_class=self._model_class
-        )
+        self.values = await type(self).get_values(self.id, item_class=self.item_class)
 
 
-class RedisModelSet(ModelCollection[IModel], RedisSet[IModel]):
+class RedisModelSet(ModelCollection[M], RedisSet[M]):
     pass
 
 
-class RedisModelList(ModelCollection[IModel], RedisList[IModel]):
+class RedisModelList(ModelCollection[M], RedisList[M]):
     pass

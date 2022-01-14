@@ -1,25 +1,14 @@
 import dataclasses
-import sys
 from dataclasses import field
 from typing import Optional, Set
 
 from aioredis import Redis
 from aioredis.client import Pipeline
 
-if sys.version_info >= (3, 8):
-    from unittest.async_case import IsolatedAsyncioTestCase as TestCase
-    from unittest.mock import AsyncMock as CoroutineMock
-    from unittest.mock import MagicMock, patch
-
-    ASYNCTEST = False
-else:
-    from asynctest import TestCase
-    from asynctest.mock import CoroutineMock, MagicMock, patch
-
-    ASYNCTEST = True
-
 from aio_rom import DataclassModel as Model
 from aio_rom.exception import ModelNotFoundException
+
+from . import CoroutineMock, MagicMock, RedisTestCase, patch
 
 
 @dataclasses.dataclass
@@ -30,7 +19,7 @@ class ForTesting(Model):
     f4: Set[int] = field(default_factory=set)
 
 
-class ModelTestCase(TestCase):
+class ModelTestCase(RedisTestCase):
     async def asyncSetUp(self) -> None:
         self.mock_redis_transaction = MagicMock(autospec=Pipeline)
         self.mock_redis_transaction.execute = CoroutineMock()
@@ -53,10 +42,6 @@ class ModelTestCase(TestCase):
 
     async def asyncTearDown(self) -> None:
         patch.stopall()
-
-    if ASYNCTEST:
-        tearDown = asyncTearDown  # type: ignore[assignment]
-        setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
         await ForTesting("123", 123).save()

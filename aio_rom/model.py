@@ -39,7 +39,7 @@ class Model(metaclass=ModelType):
         return f"{cls.__name__.lower()}"
 
     @classmethod
-    async def get(cls: type[M], id: Key) -> M:
+    async def get(cls: type[M], id: Key, **kwargs: Any) -> M:
         async with connection() as conn:
             db_item: dict[str, RedisValue] = await conn.hgetall(
                 f"{cls.prefix()}:{str(id)}"

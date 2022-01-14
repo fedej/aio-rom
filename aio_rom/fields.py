@@ -126,9 +126,9 @@ def _(value: str | None, *_: Any) -> str | None:
 @serialize.register(collections.abc.Set)
 def _(values: collections.abc.Set[Any], key: str, field: Field) -> RedisSet[Any]:
     return (
-        RedisModelSet(key, values, model_class=field.args[0], cascade=field.cascade)
+        RedisModelSet(key, values, item_class=field.args[0], cascade=field.cascade)
         if field.args and issubclass(field.args[0], IModel)
-        else RedisSet(key, values)
+        else RedisSet(key, values, item_class=field.args[0])
     )
 
 
@@ -137,9 +137,9 @@ def _(
     values: collections.abc.MutableSequence[Any], key: str, field: Field
 ) -> RedisList[Any]:
     return (
-        RedisModelList(key, values, model_class=field.args[0], cascade=field.cascade)
+        RedisModelList(key, values, item_class=field.args[0], cascade=field.cascade)
         if field.args and issubclass(field.args[0], IModel)
-        else RedisList(key, values)
+        else RedisList(key, values, item_class=field.args[0])
     )
 
 
@@ -168,7 +168,7 @@ def field_deserializer(
         if issubclass(model_class, IModel):
             deserializer = partial(
                 RedisModelSet.get,
-                model_class=model_class,
+                item_class=model_class,
                 eager=field.eager,
                 cascade=field.cascade,
             )
@@ -176,13 +176,14 @@ def field_deserializer(
             deserializer = partial(
                 RedisSet.get,
                 eager=field.eager,
+                item_class=model_class,
             )
     elif issubclass(field.type, MutableSequence):
         model_class = field.args[0]
         if issubclass(model_class, IModel):
             deserializer = partial(
                 RedisModelList.get,
-                model_class=model_class,
+                item_class=model_class,
                 eager=field.eager,
                 cascade=field.cascade,
             )
@@ -190,6 +191,7 @@ def field_deserializer(
             deserializer = partial(
                 RedisList.get,
                 eager=field.eager,
+                item_class=model_class,
             )
 
     return deserializer
