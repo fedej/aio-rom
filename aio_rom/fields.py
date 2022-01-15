@@ -5,15 +5,19 @@ import dataclasses
 import functools
 import json
 from asyncio.coroutines import iscoroutine
-from collections.abc import MutableSequence
-from dataclasses import MISSING
-from functools import partial
-from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
+from typing import Any, Awaitable, TypeVar
 
 from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
 
-from .attributes import RedisList, RedisModelList, RedisModelSet, RedisSet
-from .types import Deserializer, IModel, Key, RedisValue, Serializable, Serialized
+from .attributes import (
+    RedisCollection,
+    RedisList,
+    RedisModelList,
+    RedisModelSet,
+    RedisSet,
+)
+from .types import IModel, Key, RedisValue, Serializable, Serialized
+from .utils import type_dispatch
 
 T = TypeVar("T")
 
@@ -82,23 +86,10 @@ def fields(obj: Any) -> list[Field]:
     return type_fields(obj if isinstance(obj, type) else type(obj))
 
 
-def default_is_not_missing(value: object) -> TypeGuard[Serializable | None]:
-    return value is not MISSING
-
-
-def factory_is_not_missing(value: object) -> TypeGuard[Callable[[], Serializable]]:
-    return value is not MISSING
-
-
 async def deserialize(field: Field, value: RedisValue | None) -> Any:
     if value is None and field.optional:
         return None
-    deserializer = field_deserializer(field)
-    deserialized_value = deserializer(value)
-    if iscoroutine(deserialized_value):
-        return await deserialized_value
-    else:
-        return deserialized_value
+    return await deserialize_field(field.type, value, field)
 
 
 def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
@@ -143,55 +134,56 @@ def _(
     )
 
 
-@functools.lru_cache()
-def field_deserializer(
-    field: Field,
-) -> Deserializer:
-    deserializer: Deserializer = json.loads
-    if issubclass(field.type, (str, bytes, memoryview)):
+@type_dispatch
+async def deserialize_field(_: type[Any], value: RedisValue, field: Field) -> Any:
+    return json.loads(value) if isinstance(value, (str, bytes)) else value
 
-        def deserializer(value: Any) -> Any:
-            return value
 
-    elif issubclass(field.type, IModel):
-        model_class = field.type
+@deserialize_field.register(str)
+@deserialize_field.register(bytes)
+@deserialize_field.register(memoryview)
+async def _(
+    _: type[str | bytes | memoryview], value: RedisValue, field: Field
+) -> RedisValue:
+    return value
 
-        async def deserializer(
-            key: Key,
-        ) -> IModel | None:
-            if key is None:
-                return None
-            return await model_class.get(key)
 
-    elif issubclass(field.type, AbstractSet):
-        model_class = field.args[0]
-        if issubclass(model_class, IModel):
-            deserializer = partial(
-                RedisModelSet.get,
-                item_class=model_class,
-                eager=field.eager,
-                cascade=field.cascade,
-            )
-        else:
-            deserializer = partial(
-                RedisSet.get,
-                eager=field.eager,
-                item_class=model_class,
-            )
-    elif issubclass(field.type, MutableSequence):
-        model_class = field.args[0]
-        if issubclass(model_class, IModel):
-            deserializer = partial(
-                RedisModelList.get,
-                item_class=model_class,
-                eager=field.eager,
-                cascade=field.cascade,
-            )
-        else:
-            deserializer = partial(
-                RedisList.get,
-                eager=field.eager,
-                item_class=model_class,
-            )
+@deserialize_field.register(IModel)
+async def _(value_type: type[IModel], value: Key, _: Field) -> IModel:
+    return await value_type.get(value)
 
-    return deserializer
+
+@deserialize_field.register(collections.abc.Set)
+async def _(_: type[set[Any]], value: Key, field: Field) -> RedisCollection[Any]:
+    item_class = field.args[0]
+    if issubclass(item_class, IModel):
+        return await RedisModelSet.get(
+            value,
+            item_class=item_class,
+            eager=field.eager,
+            cascade=field.cascade,
+        )
+    else:
+        return await RedisSet.get(
+            value,
+            eager=field.eager,
+            item_class=item_class,
+        )
+
+
+@deserialize_field.register(collections.abc.MutableSequence)
+async def _(_: type[list[Any]], value: Key, field: Field) -> RedisCollection[Any]:
+    item_class = field.args[0]
+    if issubclass(item_class, IModel):
+        return await RedisModelList.get(
+            value,
+            item_class=item_class,
+            eager=field.eager,
+            cascade=field.cascade,
+        )
+    else:
+        return await RedisList.get(
+            value,
+            eager=field.eager,
+            item_class=item_class,
+        )
