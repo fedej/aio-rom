@@ -1,6 +1,5 @@
 import dataclasses
 import os
-import sys
 from dataclasses import field
 from typing import List, Optional, Set
 from unittest import skipUnless
@@ -9,18 +8,10 @@ from typing_extensions import Annotated
 
 from aio_rom import DataclassModel as Model
 from aio_rom.attributes import RedisModelSet
-
-if sys.version_info >= (3, 8):
-    from unittest.async_case import IsolatedAsyncioTestCase as TestCase
-
-    ASYNCTEST = False
-else:
-    from asynctest import TestCase
-
-    ASYNCTEST = True
-
 from aio_rom.fields import Metadata
 from aio_rom.session import connection
+
+from . import RedisTestCase
 
 
 @dataclasses.dataclass(unsafe_hash=True)
@@ -50,7 +41,7 @@ class FooBar(Model):
 
 
 @skipUnless(os.environ.get("CI"), "Redis CI test only")
-class RedisIntegrationTestCase(TestCase):
+class RedisIntegrationTestCase(RedisTestCase):
     async def asyncSetUp(self) -> None:
         self.bar = Bar("1", 123, "value", [1, 2, 3])
 
@@ -58,10 +49,6 @@ class RedisIntegrationTestCase(TestCase):
         await Foo.delete_all()
         await Bar.delete_all()
         await FooBar.delete_all()
-
-    if ASYNCTEST:
-        tearDown = asyncTearDown  # type: ignore[assignment]
-        setUp = asyncSetUp  # type: ignore[assignment]
 
     async def test_save(self) -> None:
         await self.bar.save()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Coroutine, TypeVar, Union
+from typing import Any, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
 from typing_extensions import Protocol, runtime_checkable
@@ -28,4 +28,3 @@ class IModel(Protocol):
 RedisValue = FieldT
 Serializable = Union[RedisValue, IModel]
 Serialized = Union[RedisValue, IModel, None]
-Deserializer = Callable[..., Union[Any, Coroutine[Any, Any, Any]]]
