@@ -98,6 +98,10 @@ class RedisCollection(
     def __contains__(self, x: object) -> bool:
         return self.values is not None and x in self.values
 
+    async def delete(self) -> None:
+        async with connection() as conn:
+            await conn.delete(self.id)
+
 
 class RedisSet(RedisCollection[S], Set[S]):
     @classmethod
@@ -123,8 +127,18 @@ class RedisSet(RedisCollection[S], Set[S]):
     def add(self, value: S) -> None:
         cast(Set[S], self.values).add(value)
 
+    async def async_add(self, value: S, **_: Any) -> None:
+        async with connection() as conn:
+            await conn.sadd(self.id, getattr(value, "id", value))  # type: ignore
+        self.add(value)
+
     def discard(self, value: S) -> None:
         cast(Set[S], self.values).discard(value)
+
+    async def async_discard(self, value: S) -> None:
+        async with connection() as conn:
+            await conn.srem(self.id, getattr(value, "id", value))  # type: ignore
+        self.discard(value)
 
     async def total_count(self) -> int:
         async with connection() as conn:
@@ -175,19 +189,16 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
     def __getitem__(self, i: int | slice) -> S | List[S]:
         return cast(List[S], self.values).__getitem__(i)
 
-    @overload
-    def __setitem__(self, index: int, o: S) -> None:
-        ...
-
-    @overload
-    def __setitem__(self, index: slice, o: Iterable[S]) -> None:
-        ...
-
     def __setitem__(self, i: int | slice, o: S | Iterable[S]) -> None:
         self.values.__setitem__(i, o)  # type: ignore
 
     def __delitem__(self, i: int | slice) -> None:
-        cast(List[S], self.values).__delitem__(i)
+        self.values.__delitem__(i)  # type: ignore
+
+    async def async_append(self, value: S, **_: Any) -> None:
+        async with connection() as conn:
+            await conn.rpush(self.id, getattr(value, "id", value))  # type: ignore
+        self.append(value)
 
     async def __aiter__(self) -> AsyncIterator[S]:
         async with connection() as conn:
@@ -235,10 +246,26 @@ class ModelCollection(RedisCollection[M], Generic[M], metaclass=ABCMeta):
     async def load(self: ModelCollection[IModel]) -> None:
         self.values = await type(self).get_values(self.id, item_class=self.item_class)
 
+    async def delete(self) -> None:
+        await super().delete()
+        if self._cascade:
+            await asyncio.gather(*[m.delete() for m in self])
+
 
 class RedisModelSet(ModelCollection[M], RedisSet[M]):
-    pass
+    async def async_add(self, value: M, optimistic: bool = False, **_: Any) -> None:
+        await super().async_add(value)
+        if self._cascade:
+            await value.save(optimistic=optimistic)
+
+    async def async_discard(self, value: M) -> None:
+        await super().async_discard(value)
+        if self._cascade:
+            await value.delete()
 
 
 class RedisModelList(ModelCollection[M], RedisList[M]):
-    pass
+    async def async_append(self, value: M, optimistic: bool = False, **_: Any) -> None:
+        await super().async_append(value)
+        if self._cascade:
+            await value.save(optimistic=optimistic)
