@@ -91,3 +91,31 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
             "test",
             "ing",
         }
+
+    async def test_iteration_set(self) -> None:
+        redis_set = RedisSet("some_set", None, str)
+        redis_set.add("test")
+        redis_set.add("ing")
+        await redis_set.save()
+        some_set = await RedisSet.get("some_set", item_class=str)
+        async for item in some_set:
+            assert item in redis_set
+        assert not some_set
+
+    async def test_iteration_list(self) -> None:
+        redis_list = RedisList("some_list", None, str)
+        redis_list.append("test")
+        redis_list.append("ing")
+        await redis_list.save()
+        some_list = await RedisList.get("some_list", item_class=str)
+        async for item in some_list:
+            assert item in redis_list
+        assert not some_list
+
+    async def test_model_iteration(self) -> None:
+        model_list = RedisModelList("models", [self.foo], Foo, cascade=True)
+        await model_list.save()
+        models = await RedisModelList.get("models", item_class=Foo)
+        async for item in models:
+            assert item in model_list
+        assert not models

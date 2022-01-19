@@ -5,6 +5,7 @@ import json
 from abc import ABCMeta, abstractmethod
 from typing import (
     Any,
+    AsyncIterable,
     AsyncIterator,
     Awaitable,
     Collection,
@@ -31,7 +32,9 @@ S = TypeVar("S", bound=Serializable)
 M = TypeVar("M", bound=IModel)
 
 
-class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
+class RedisCollection(
+    Collection[T], IModel, Generic[T], AsyncIterable[T], metaclass=ABCMeta
+):
     def __init__(
         self, id: Key, values: Collection[T] | None, item_class: Type[T], **kwargs: Any
     ):
@@ -87,7 +90,7 @@ class RedisCollection(Collection[T], IModel, Generic[T], metaclass=ABCMeta):
         pass
 
     def __iter__(self) -> Iterator[T]:
-        return filter(None, iter(self.values or []))
+        return iter(self.values or [])
 
     def __len__(self) -> int:
         return len(self.values) if self.values else 0
@@ -126,6 +129,11 @@ class RedisSet(RedisCollection[S], Set[S]):
     async def total_count(self) -> int:
         async with connection() as conn:
             return int(await conn.scard(self.id))
+
+    async def __aiter__(self) -> AsyncIterator[S]:
+        async with connection() as conn:
+            async for value in conn.sscan_iter(self.id):
+                yield value if issubclass(self.item_class, str) else json.loads(value)
 
 
 class RedisList(RedisCollection[S], MutableSequence[S]):
@@ -181,10 +189,14 @@ class RedisList(RedisCollection[S], MutableSequence[S]):
     def __delitem__(self, i: int | slice) -> None:
         cast(List[S], self.values).__delitem__(i)
 
+    async def __aiter__(self) -> AsyncIterator[S]:
+        async with connection() as conn:
+            for index in range(0, await conn.llen(self.id)):
+                value = await conn.lindex(self.id, index)
+                yield value if issubclass(self.item_class, str) else json.loads(value)
 
-class ModelCollection(
-    RedisCollection[M], AsyncIterator[M], Generic[M], metaclass=ABCMeta
-):
+
+class ModelCollection(RedisCollection[M], Generic[M], metaclass=ABCMeta):
     def __init__(
         self,
         key: Key,
@@ -215,20 +227,10 @@ class ModelCollection(
                 await asyncio.gather(*[item_class.get(key) for key in keys])
             )
 
-    def __aiter__(self) -> AsyncIterator[M]:
-        self._iter = None
-        return self
-
-    async def __anext__(self) -> M:
-        if self._iter is None:
-            if self.item_class is None:
-                raise TypeError("model class is missing")
-            keys = cast(Collection[Key], await super().get_values(self.id, str))  # type: ignore  # noqa: E501
-            self._iter = map(self.item_class.get, keys)
-        try:
-            return await next(self._iter)
-        except StopIteration as err:
-            raise StopAsyncIteration from err
+    async def __aiter__(self) -> AsyncIterator[M]:
+        key: Key
+        async for key in super().__aiter__():  # type: ignore
+            yield await self.item_class.get(key)
 
     async def load(self: ModelCollection[IModel]) -> None:
         self.values = await type(self).get_values(self.id, item_class=self.item_class)
