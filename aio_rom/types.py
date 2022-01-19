@@ -24,6 +24,9 @@ class IModel(Protocol):
     async def total_count(self) -> int:
         ...
 
+    async def delete(self) -> None:
+        ...
+
 
 RedisValue = FieldT
 Serializable = Union[RedisValue, IModel]

@@ -27,7 +27,8 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         self.foo = Foo("1", 123)
 
     async def asyncTearDown(self) -> None:
-        await Foo.delete_all()
+        async with connection() as conn:
+            await conn.flushdb()
 
     async def _test_save_model_collection(
         self, redis_collection: ModelCollection[Foo], cascade: bool = False
@@ -119,3 +120,56 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         async for item in models:
             assert item in model_list
         assert not models
+
+    async def test_async_set(self) -> None:
+        a_set = RedisSet("a_set", None, str)
+        await a_set.async_add("123")
+        await a_set.async_add("456")
+        assert len(a_set) == 2
+        await a_set.async_discard("456")
+        assert len(a_set) == 1
+        assert a_set == await RedisSet.get("a_set", item_class=str, eager=True)
+
+    async def test_async_list(self) -> None:
+        a_list = RedisList("a_list", None, str)
+        await a_list.async_append("123")
+        await a_list.async_append("456")
+        assert len(a_list) == 2
+        assert a_list == await RedisList.get("a_list", item_class=str, eager=True)
+
+    async def test_async_model_set(self) -> None:
+        a_set = RedisModelSet("a_set", None, Foo, cascade=True)
+        await a_set.async_add(Foo("123", 123))
+        await a_set.async_add(Foo("456", 456))
+        assert len(a_set) == 2
+        await a_set.async_discard(Foo("456", 456))
+        assert len(a_set) == 1
+        assert a_set == await RedisModelSet.get("a_set", item_class=Foo, eager=True)
+
+    async def test_async_model_list(self) -> None:
+        a_list = RedisModelList("a_list", None, Foo, cascade=True)
+        await a_list.async_append(Foo("123", 123))
+        await a_list.async_append(Foo("456", 456))
+        assert len(a_list) == 2
+        assert a_list == await RedisModelList.get("a_list", item_class=Foo, eager=True)
+
+    async def test_delete(self) -> None:
+        a_list = RedisList("a_list", None, str, cascade=True)
+        await a_list.async_append("123")
+        await a_list.async_append("456")
+        assert len(a_list) == 2
+        await a_list.delete()
+        with self.assertRaises(ModelNotFoundException):
+            await RedisList.get("a_list", item_class=str)
+
+    async def test_delete_model(self) -> None:
+        a_list = RedisModelList("a_list", None, Foo, cascade=True)
+        await a_list.async_append(Foo("123", 123))
+        await a_list.async_append(Foo("456", 456))
+        assert len(a_list) == 2
+        assert Foo.get("123")
+        await a_list.delete()
+        with self.assertRaises(ModelNotFoundException):
+            await RedisModelList.get("a_list", item_class=Foo)
+        with self.assertRaises(ModelNotFoundException):
+            await Foo.get("123")
