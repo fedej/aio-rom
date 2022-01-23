@@ -17,7 +17,9 @@ classifiers = [
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Database :: Front-Ends",
 ]
 include = ["aio_rom/py.typed"]
@@ -26,22 +28,17 @@ include = ["aio_rom/py.typed"]
 python = "^3.7"
 aioredis = "2.0.1"
 typing-extensions = ">=4.0.1,<5.0"
-mypy = {version = ">=0.920,<0.932", optional = true, markers = "platform_python_implementation == 'CPython'"}
 
 [tool.poetry.dev-dependencies]
 black = "^21.12b0"
 flake8 = "^4.0.1"
-mypy = {version = ">=0.920,<0.932", optional = true, markers = "platform_python_implementation == 'CPython'"}
+mypy = "^0.931"
 pytest = "^6.2.5"
-pytest-asyncio = "^0.17.2"
 pytest-benchmark = "^3.4.1"
 isort = "^5.9.3"
 bandit = "^1.7.1"
-flake8-bugbear = "^21.11.29"
-flake8-comprehensions = "^3.7.0"
-
-[tool.poetry.extras]
-mypy = ["mypy"]
+flake8-bugbear = "^22.1.11"
+flake8-comprehensions = "^3.8.0"
 
 [tool.poetry-version-plugin]
 source = "git-tag"
@@ -81,7 +78,6 @@ deps =
     asynctest; python_version < "3.8"
     pytest
     pytest-cov
-    pytest-asyncio
     pytest-benchmark
 passenv = CI
 extras = mypy
