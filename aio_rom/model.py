@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Iterable
 from inspect import signature
-from typing import Any, AsyncIterator, Generic, Mapping, TypeVar
+from typing import Any, AsyncIterator, ClassVar, Type, TypeVar
 
 from .exception import ModelNotFoundException
 from .fields import deserialize, fields, serialize
@@ -17,22 +17,12 @@ _logger = logging.getLogger(__name__)
 M = TypeVar("M", bound="Model")
 
 
-class ModelType(type, Generic[M]):
-    @classmethod
-    def __prepare__(  # type: ignore[override]
-        mcs, name: str, bases: tuple[type, ...], **kwds: Any
-    ) -> Mapping[str, Any]:
-        ns = super().__prepare__(name, bases)
-        return {
-            "NotFoundException": type(
-                "NotFoundException", (ModelNotFoundException,), {}
-            ),
-            **ns,
-        }
-
-
-class Model(metaclass=ModelType):
+class Model:
+    NotFoundException: ClassVar[Type[ModelNotFoundException]]
     id: Key
+
+    def __init_subclass__(cls: type[M], **kwargs: Any) -> None:
+        cls.NotFoundException = type("NotFoundException", (ModelNotFoundException,), {})
 
     @classmethod
     def prefix(cls) -> str:

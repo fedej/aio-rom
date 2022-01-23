@@ -56,9 +56,6 @@ profile = "black"
 [tool.coverage.run]
 relative_files = true
 
-[tool.mypy]
-plugins = "aio_rom.mypy"
-
 [tool.tox]
 legacy_tox_ini = """
 [tox]

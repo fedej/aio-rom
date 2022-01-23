@@ -5,7 +5,7 @@ import dataclasses
 import functools
 import json
 from asyncio.coroutines import iscoroutine
-from typing import Any, Awaitable, TypeVar
+from typing import Any, Awaitable, ClassVar, TypeVar
 
 from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
 
@@ -76,8 +76,9 @@ def type_fields(obj: type) -> list[Field]:
             fields_list.append(Field(name, origin, args, **metadata))
         else:
             origin = get_origin(value)  # type: ignore[assignment]
-            args = get_args(value)
-            fields_list.append(Field(name, origin, args))
+            if origin is not ClassVar:  # type: ignore
+                args = get_args(value)
+                fields_list.append(Field(name, origin, args))
 
     return fields_list
 
