@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Iterable
 from inspect import signature
-from typing import Any, AsyncIterator, ClassVar, Type, TypeVar
+from typing import Any, AsyncIterator, ClassVar, Type, TypeVar, Generic
 
 from .exception import ModelNotFoundException
 from .fields import deserialize, fields, serialize
@@ -29,7 +29,7 @@ class Model:
         return f"{cls.__name__.lower()}"
 
     @classmethod
-    async def get(cls: type[M], id: Key, **kwargs: Any) -> M:
+    async def get(cls: type[M], id: Key) -> M:
         async with connection() as conn:
             db_item: dict[str, RedisValue] = await conn.hgetall(
                 f"{cls.prefix()}:{str(id)}"
@@ -41,7 +41,7 @@ class Model:
         model_fields = {f.name: f for f in fields(cls) if not f.transient}
         deserialized = await asyncio.gather(
             *[
-                deserialize(model_fields[field_name], value)
+                deserialize(model_fields[field_name].type, value)
                 for field_name, value in db_item.items()
             ]
         )
@@ -99,7 +99,7 @@ class Model:
     def db_id(self) -> str:
         return f"{self.prefix()}:{str(self.id)}"
 
-    async def save(self, optimistic: bool = False) -> None:
+    async def save(self, optimistic: bool = False, _: bool = False) -> None:
         watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
             await self.update(optimistic=optimistic)
@@ -134,7 +134,7 @@ class Model:
 
         return model_fields
 
-    async def delete(self) -> None:
+    async def delete(self, _: bool = False) -> None:
         key = self.db_id()
         async with connection() as conn:
             keys = await conn.keys(f"{key}:*")

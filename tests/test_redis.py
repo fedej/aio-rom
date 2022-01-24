@@ -9,7 +9,7 @@ from typing_extensions import Annotated
 from aio_rom import DataclassModel as Model
 from aio_rom.attributes import RedisModelSet
 from aio_rom.fields import Metadata
-from aio_rom.session import connection
+from aio_rom.session import configure, connection
 
 from . import RedisTestCase
 
@@ -44,6 +44,7 @@ class FooBar(Model):
 class RedisIntegrationTestCase(RedisTestCase):
     async def asyncSetUp(self) -> None:
         self.bar = Bar("1", 123, "value", [1, 2, 3])
+        configure(address="redis://192.168.99.102")
 
     async def asyncTearDown(self) -> None:
         await Foo.delete_all()
