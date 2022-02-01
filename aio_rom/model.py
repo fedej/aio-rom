@@ -3,16 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Iterable
-from inspect import signature
-from typing import Any, AsyncIterator, ClassVar, Type, TypeVar, Generic
+from operator import attrgetter
+from typing import Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
 
 from .exception import ModelNotFoundException
-from .fields import deserialize, fields, serialize
+from .fields import deserialize, fields, serialize_dict
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue
 
 _logger = logging.getLogger(__name__)
-
 
 M = TypeVar("M", bound="Model")
 
@@ -30,35 +29,21 @@ class Model:
 
     @classmethod
     async def get(cls: type[M], id: Key) -> M:
+        key = f"{cls.prefix()}:{str(id)}"
         async with connection() as conn:
-            db_item: dict[str, RedisValue] = await conn.hgetall(
-                f"{cls.prefix()}:{str(id)}"
-            )
+            db_item: dict[str, RedisValue] = await conn.hgetall(key)
 
         if not db_item:
-            raise cls.NotFoundException(f"{str(id)} not found")
+            raise cls.NotFoundException(f"{key} not found")
 
-        model_fields = {f.name: f for f in fields(cls) if not f.transient}
+        model_fields = [
+            f for field_name, f in fields(cls).items() if field_name in db_item
+        ]
         deserialized = await asyncio.gather(
-            *[
-                deserialize(model_fields[field_name].type, value)
-                for field_name, value in db_item.items()
-            ]
+            *(deserialize(f.type, db_item[f.name], field=f) for f in model_fields)
         )
 
-        return cls.from_dict(
-            {f: value for f, value in zip(db_item.keys(), deserialized)},
-            strict=False,
-        )
-
-    @classmethod
-    def from_dict(cls: type[M], model: dict[str, Any], strict: bool = True) -> M:
-        parameters = signature(cls).parameters
-        return (
-            cls(**{k: v for k, v in model.items() if k in parameters})
-            if strict
-            else cls(**model)
-        )
+        return cls(**dict(zip(map(attrgetter("name"), model_fields), deserialized)))
 
     @classmethod
     async def scan(cls: type[M], **kwargs: str | None | int | None) -> AsyncIterator[M]:
@@ -106,33 +91,37 @@ class Model:
             await tr.sadd(self.prefix(), self.id)
 
     async def update(self, optimistic: bool = False, **changes: Any) -> None:
+        model_fields = fields(self)
+        values = {
+            field_name: changes.get(field_name, getattr(self, field_name))
+            for field_name, f in model_fields.items()
+            if (not changes or field_name in changes)
+        }
+
+        model_dict = serialize_dict(
+            {k: v for k, v in values.items() if not model_fields[k].optional or v}
+        )
         watch = [self.db_id()] if optimistic else []
+        operations: list[Awaitable[None]] = [
+            value.save(optimistic=optimistic, cascade=model_fields[field_name].cascade)
+            for field_name, value in values.items()
+            if isinstance(value, IModel)
+        ]
+        keys_to_delete = [k for k, v in model_dict.items() if v is None]
         async with transaction(*watch) as tr:
-            model_dict = await self.serialize(changes)
-            references = []
-            for name, value in model_dict.items():
-                if isinstance(value, IModel):
-                    references.append(value)
-                    model_dict[name] = value.db_id()
-            await asyncio.gather(*[ref.save(optimistic) for ref in references])
-            await tr.hset(self.db_id(), mapping=model_dict)
+            if keys_to_delete:
+                operations.append(tr.hdel(self.db_id(), *keys_to_delete))
+            await asyncio.gather(
+                tr.hset(
+                    self.db_id(),
+                    mapping={k: v for k, v in model_dict.items() if v is not None},
+                ),
+                *operations,
+            )
+
         for name, value in changes.items():
-            setattr(self, name, value)
-
-    async def serialize(self, changes: dict[str, Any]) -> dict[str, Any]:
-        model_fields = {}
-        for f in [
-            f
-            for f in fields(self)
-            if not f.transient and (not changes or f.name in changes)
-        ]:
-            value = changes.get(f.name, getattr(self, f.name))
-            if value:
-                key = f"{self.db_id()}:{f.name}"
-                serialized = serialize(value, key, f)
-                model_fields[f.name] = serialized
-
-        return model_fields
+            if name in model_dict:
+                setattr(self, name, value)
 
     async def delete(self, _: bool = False) -> None:
         key = self.db_id()

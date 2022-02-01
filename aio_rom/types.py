@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypeVar, Union
+from typing import Optional, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
 from typing_extensions import Protocol, runtime_checkable
@@ -11,6 +11,10 @@ T = TypeVar("T", bound="IModel")
 
 @runtime_checkable
 class IModel(Protocol):
+    @classmethod
+    def prefix(cls) -> str:
+        return f"{cls.__name__.lower()}"
+
     def db_id(self) -> Key:
         ...
 
@@ -30,4 +34,4 @@ class IModel(Protocol):
 
 RedisValue = FieldT
 Serializable = Union[RedisValue, IModel]
-Serialized = Union[RedisValue, IModel, None]
+Serialized = Optional[RedisValue]

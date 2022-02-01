@@ -13,7 +13,7 @@ from typing_extensions import Annotated
 
 from aio_rom import DataclassModel as Model
 from aio_rom.fields import Metadata
-from aio_rom.session import configure, connection
+from aio_rom.session import connection
 
 
 @dataclasses.dataclass
@@ -37,7 +37,6 @@ class Benchmark(TestCase):
     @pytest.fixture(autouse=True)
     def setupBenchmark(self, benchmark: BenchmarkFixture) -> None:
         self.benchmark = benchmark
-        configure(address="redis://192.168.99.102")
 
     def run_coro(self, coro_factory: Callable[[], Awaitable[Any]]) -> Any:
         return asyncio.run(coro_factory())
