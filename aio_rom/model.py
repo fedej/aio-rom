@@ -7,7 +7,7 @@ from operator import attrgetter
 from typing import Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
 
 from .exception import ModelNotFoundException
-from .fields import deserialize, fields, serialize_dict
+from .fields import Field, deserialize, fields, serialize_dict
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue
 
@@ -39,8 +39,15 @@ class Model:
         model_fields = [
             f for field_name, f in fields(cls).items() if field_name in db_item
         ]
+
+        async def deserialize_field(field: Field, value: RedisValue) -> Any:
+            value = await deserialize(field.type, value)
+            if isinstance(value, IModel) and field.eager:
+                await value.load()
+            return value
+
         deserialized = await asyncio.gather(
-            *(deserialize(f.type, db_item[f.name], field=f) for f in model_fields)
+            *(deserialize_field(f, db_item[f.name]) for f in model_fields)
         )
 
         return cls(**dict(zip(map(attrgetter("name"), model_fields), deserialized)))
@@ -92,8 +99,11 @@ class Model:
 
     async def update(self, optimistic: bool = False, **changes: Any) -> None:
         model_fields = fields(self)
+        for name, value in changes.items():
+            setattr(self, name, value)
+
         values = {
-            field_name: changes.get(field_name, getattr(self, field_name))
+            field_name: getattr(self, field_name)
             for field_name, f in model_fields.items()
             if (not changes or field_name in changes)
         }
@@ -111,17 +121,16 @@ class Model:
         async with transaction(*watch) as tr:
             if keys_to_delete:
                 operations.append(tr.hdel(self.db_id(), *keys_to_delete))
-            await asyncio.gather(
-                tr.hset(
-                    self.db_id(),
-                    mapping={k: v for k, v in model_dict.items() if v is not None},
-                ),
-                *operations,
-            )
-
-        for name, value in changes.items():
-            if name in model_dict:
-                setattr(self, name, value)
+            update_mapping = {k: v for k, v in model_dict.items() if v is not None}
+            if update_mapping:
+                operations.append(
+                    tr.hset(
+                        self.db_id(),
+                        mapping=update_mapping,
+                    )
+                )
+            if operations:
+                await asyncio.gather(*operations)
 
     async def delete(self, _: bool = False) -> None:
         key = self.db_id()
@@ -137,3 +146,12 @@ class Model:
 
     async def refresh(self: M) -> M:
         return await type(self).get(self.id)
+
+    async def load(self) -> None:
+        """Model references are eager by default"""
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        model_fields = fields(self)
+        if isinstance(value, IModel) and not getattr(value, "id", None):
+            value.id = f"{self.db_id()}:{model_fields[key].name}"  # type: ignore[attr-defined] # noqa
+        super().__setattr__(key, value)

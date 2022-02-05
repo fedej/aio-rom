@@ -31,6 +31,9 @@ class IModel(Protocol):
     async def delete(self, cascade: bool = False) -> None:
         ...
 
+    async def load(self) -> None:
+        ...
+
 
 RedisValue = FieldT
 Serializable = Union[RedisValue, IModel]

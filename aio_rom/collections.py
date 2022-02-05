@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod
 from collections import UserList
 from typing import (
     Any,
@@ -11,9 +11,9 @@ from typing import (
     Collection,
     Generic,
     Iterable,
+    Iterator,
     List,
-    MutableSequence,
-    Set,
+    MutableSet,
     Type,
     TypeVar,
 )
@@ -21,7 +21,7 @@ from typing import (
 from aioredis.client import Pipeline, Redis
 
 from .exception import ModelNotFoundException
-from .fields import Field, deserialize, serialize
+from .fields import deserialize, serialize
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue, Serializable
 
@@ -133,16 +133,34 @@ class RedisCollection(
         async with transaction() as tr:
             await tr.delete(self.db_id())
             await tr.srem(self.prefix(), self.id)
+            if cascade and self.values:
+                await asyncio.gather(
+                    *[v.delete() for v in self.values if isinstance(v, IModel)]
+                )
 
-    def __getattr__(self, item: str) -> Any:
-        return getattr(self.values, item)
+    def __len__(self) -> int:
+        return 0 if self.values is None else len(self.values)
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self.values or [])
+
+    def __repr__(self) -> str:
+        return repr(self.values)
+
+    def __eq__(self, other: Any) -> bool:
+        return self.values == (
+            other.values if isinstance(other, RedisCollection) else other
+        )
+
+    def __contains__(self, item: Any) -> bool:
+        return self.values is not None and item in self.values
 
 
-class RedisSet(RedisCollection[T], Set[T]):
+class RedisSet(RedisCollection[T], MutableSet[T]):
     @RedisCollection.values.setter  # type: ignore[attr-defined,misc]
     def values(self, values: Collection[T] | None) -> None:
         super(RedisSet, type(self)).values.fset(  # type: ignore[attr-defined]
-            self, set(values) if values else []
+            self, set(values) if values else set()
         )
 
     async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
@@ -179,6 +197,12 @@ class RedisSet(RedisCollection[T], Set[T]):
                 item = await deserialize(self.item_class, value)
                 self.add(item)
                 yield item
+
+    def add(self, value: T) -> None:
+        self.values.add(value)
+
+    def discard(self, value: T) -> None:
+        self.values.discard(value)
 
 
 class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
@@ -220,14 +244,6 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
                 yield item
 
 
-@deserialize.register(RedisList)
-@deserialize.register(RedisSet)
-async def _(
-    field_type: type[RedisList[T]] | type[RedisSet[T]],
-    value: Key,
-    field: Field | None = None,
-) -> RedisCollection[T]:
-    collection = await field_type.get(value)
-    if field and field.eager:
-        await collection.load()
-    return collection
+@serialize.register(RedisCollection)
+def _(value: RedisCollection[Any]) -> RedisValue | None:
+    return value.id if value else None

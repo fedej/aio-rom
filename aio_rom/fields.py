@@ -4,7 +4,7 @@ import dataclasses
 import functools
 import json
 from asyncio.coroutines import iscoroutine
-from typing import Any, Awaitable, ClassVar, Collection, TypeVar
+from typing import Any, Awaitable, ClassVar, TypeVar
 
 from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
 
@@ -32,14 +32,7 @@ class Field:
 
     @property
     def optional(self) -> bool:
-        return (
-            len(self.args) == 2
-            and type(None) in self.args
-            or issubclass(
-                self.origin if isinstance(self.origin, type) else self.args[0],
-                (set, list),
-            )
-        )
+        return len(self.args) == 2 and type(None) in self.args
 
     @property
     def type(self) -> type:
@@ -115,29 +108,24 @@ def _(value: int | float | bool) -> RedisValue:
     return json.dumps(value)
 
 
-# @serialize.register(type(None))
+@serialize.register(type(None))
 @serialize.register(str)
-# def _(value: str | None) -> RedisValue:
 def _(value: str) -> RedisValue:
     return value
 
 
 @type_dispatch
-async def deserialize(
-    _: type[Any], value: RedisValue, field: Field | None = None
-) -> Any:
+async def deserialize(_: type[Any], value: RedisValue) -> Any:
     return json.loads(value) if isinstance(value, (str, bytes)) else value
 
 
 @deserialize.register(str)
 @deserialize.register(bytes)
 @deserialize.register(memoryview)
-async def _(
-    _: type[str | bytes | memoryview], value: RedisValue, field: Field | None = None
-) -> RedisValue:
+async def _(_: type[str | bytes | memoryview], value: RedisValue) -> RedisValue:
     return value
 
 
 @deserialize.register(IModel)
-async def _(value_type: type[IModel], value: Key, field: Field | None = None) -> IModel:
+async def _(value_type: type[IModel], value: Key) -> IModel:
     return await value_type.get(value)

@@ -28,6 +28,7 @@ class ModelTestCase(RedisTestCase):
         self.mock_redis_transaction.srem = CoroutineMock()
         self.mock_redis_transaction.sadd = CoroutineMock()
         self.mock_redis_transaction.hset = CoroutineMock()
+        self.mock_redis_transaction.hdel = CoroutineMock()
         self.mock_redis_client = MagicMock(autospec=Redis)
         self.mock_redis_client.pipeline.return_value = self.mock_redis_transaction
         self.transaction_patcher = patch("aio_rom.model.transaction")

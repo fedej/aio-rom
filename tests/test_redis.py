@@ -42,7 +42,7 @@ class FooBar(Model):
     )
 
 
-# @skipUnless(os.environ.get("CI"), "Redis CI test only")
+@skipUnless(os.environ.get("CI"), "Redis CI test only")
 class RedisIntegrationTestCase(RedisTestCase):
     async def asyncSetUp(self) -> None:
         self.bar = Bar("1", 123, "value", RedisList[int]([1, 2, 3]))
@@ -141,14 +141,14 @@ class RedisIntegrationTestCase(RedisTestCase):
         bar2 = Bar("2", 123, "otherbar", RedisList[int]([1, 2, 3, 4]))
         await bar2.save()
 
-        await foo.update(lazy_bars={bar2})
+        await foo.update(lazy_bars=RedisSet[Bar]({bar2}))
         async with connection() as redis:
-            lazy_bars = await redis.smembers("foo:123:lazy_bars")
+            lazy_bars = await redis.smembers("redisset:foo:123:lazy_bars")
             assert {"2"} == lazy_bars
 
         await foo.update(eager_bars=RedisList[Bar]([bar2]))
         async with connection() as redis:
-            eager_bars = await redis.lrange("foo:123:eager_bars", 0, -1)
+            eager_bars = await redis.lrange("redislist:foo:123:eager_bars", 0, -1)
             assert ["2"] == eager_bars
 
         gotten_foo = await Foo.get("123")
