@@ -30,7 +30,7 @@ aioredis = "2.0.1"
 typing-extensions = ">=4.0.1,<5.0"
 
 [tool.poetry.dev-dependencies]
-black = "^21.12b0"
+black = "^22.1"
 flake8 = "^4.0.1"
 mypy = "^0.931"
 pytest = "^6.2.5"
