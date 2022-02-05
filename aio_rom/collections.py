@@ -27,30 +27,38 @@ from .types import IModel, Key, RedisValue, Serializable
 
 T = TypeVar("T", bound=Serializable)
 
-maps: dict[tuple[type, type], type] = {}
+_generic_types_cache: dict[tuple[type[Any], Any | tuple[Any, ...]], type[Any]] = {}
+GenericCollectionT = TypeVar("GenericCollectionT", bound="GenericCollection")
 
 
-class GenericCollection(Generic[T]):
+class GenericCollection:
     def __class_getitem__(
-        cls,
+        cls: type[GenericCollectionT],
         params: type[Any] | tuple[type[Any], ...],
         **kwargs: Any,
-    ) -> type[RedisCollection[T]]:
+    ) -> type[GenericCollectionT]:
+
+        cached = _generic_types_cache.get((cls, params))
+        if cached is not None:
+            return cached
+
         if not isinstance(params, tuple):
             params = (params,)
-        # if not isinstance(params[0], type):
-        #    raise TypeError(f"{cls.__name__}[{params[0]}], {params[0]} is not a type")
+        if not hasattr(cls, "__parameters__"):
+            raise TypeError(
+                f"Type {cls.__name__} must inherit from "
+                "typing.Generic before being parameterized"
+            )
 
-        global maps
-        if (cls, params[0]) not in maps:
-            cls_dict = dict(cls.__dict__)
-            cls_dict["item_class"] = params[0]
-            maps[cls, params[0]] = type(cls.__name__, (cls,), cls_dict)
-        return maps[cls, params[0]]
+        cls_dict = dict(cls.__dict__)
+        cls_dict["item_class"] = params[0]
+        generic_collection = type(cls.__name__, (cls,), cls_dict)
+        _generic_types_cache[(cls, params[0])] = generic_collection
+        return generic_collection
 
 
 class RedisCollection(
-    GenericCollection[T],
+    GenericCollection,
     Collection[T],
     IModel,
     Generic[T],
