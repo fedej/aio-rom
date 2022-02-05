@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections.abc
 import dataclasses
 import functools
 import json
@@ -9,14 +8,7 @@ from typing import Any, Awaitable, ClassVar, TypeVar
 
 from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
 
-from .attributes import (
-    RedisCollection,
-    RedisList,
-    RedisModelList,
-    RedisModelSet,
-    RedisSet,
-)
-from .types import IModel, Key, RedisValue, Serializable, Serialized
+from .types import IModel, Key, RedisValue, Serializable
 from .utils import type_dispatch
 
 T = TypeVar("T")
@@ -51,17 +43,15 @@ class Field:
 
 
 @functools.lru_cache()
-def type_fields(obj: type) -> list[Field]:
-    fields_list: list[Field] = []
-    origin: type
-    args: tuple[type, ...]
+def type_fields(obj: type) -> dict[str, Field]:
+    fields_dict: dict[str, Field] = {}
     for name, value in get_type_hints(obj, include_extras=True).items():
         if isinstance(value, type):
-            fields_list.append(Field(name, value, ()))
+            fields_dict[name] = Field(name, value, ())
         elif hasattr(value, "__metadata__"):
             if isinstance(value.__args__[0], type):
                 origin = value.__args__[0]
-                args = ()
+                args: tuple[type, ...] = ()
             else:
                 origin = get_origin(value.__args__[0])  # type: ignore[assignment]
                 args = get_args(value.__args__[0])
@@ -73,118 +63,69 @@ def type_fields(obj: type) -> list[Field]:
                 None,
             )
             metadata = dataclasses.asdict(metadata) if metadata else {}
-            fields_list.append(Field(name, origin, args, **metadata))
+            if not metadata.get("transient"):
+                fields_dict[name] = Field(name, origin, args, **metadata)
         else:
             origin = get_origin(value)  # type: ignore[assignment]
             if origin is not ClassVar:  # type: ignore
                 args = get_args(value)
-                fields_list.append(Field(name, origin, args))
+                fields_dict[name] = Field(name, origin, args)
 
-    return fields_list
+    return fields_dict
 
 
-def fields(obj: Any) -> list[Field]:
+def fields(obj: Any) -> dict[str, Field]:
     return type_fields(obj if isinstance(obj, type) else type(obj))
-
-
-async def deserialize(field: Field, value: RedisValue | None) -> Any:
-    if value is None and field.optional:
-        return None
-    return await deserialize_field(field.type, value, field)
 
 
 def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
     return iscoroutine(val)
 
 
+def serialize_dict(changes: dict[str, Serializable]) -> dict[str, RedisValue]:
+    return {f: serialize(value) for f, value in changes.items()}
+
+
 @functools.singledispatch
-def serialize(value: Any, *_: Any) -> Serialized:
-    raise TypeError(f"{type(value)} not supported")
+def serialize(value: Serializable) -> RedisValue:
+    raise TypeError(f"Serialization of '{type(value)}' not supported")
+
+
+@serialize.register(IModel)
+def _(value: IModel) -> RedisValue:
+    model_id = getattr(value, "id", None)
+    if not model_id:
+        raise AttributeError(f"{value} has no id")
+    if not isinstance(model_id, (bytes, str, memoryview)):
+        raise TypeError(f"Type '{type(model_id)}' invalid for id '{model_id}'")
+    return model_id
 
 
 @serialize.register(int)
 @serialize.register(float)
 @serialize.register(bool)
-def _(value: int | float | bool, *_: Any) -> str:
+def _(value: int | float | bool) -> RedisValue:
     return json.dumps(value)
 
 
 @serialize.register(type(None))
 @serialize.register(str)
-def _(value: str | None, *_: Any) -> str | None:
+def _(value: str) -> RedisValue:
     return value
-
-
-@serialize.register(collections.abc.Set)
-def _(values: collections.abc.Set[Any], key: str, field: Field) -> RedisSet[Any]:
-    return (
-        RedisModelSet(key, values, item_class=field.args[0], cascade=field.cascade)
-        if field.args and issubclass(field.args[0], IModel)
-        else RedisSet(key, values, item_class=field.args[0])
-    )
-
-
-@serialize.register(collections.abc.MutableSequence)
-def _(
-    values: collections.abc.MutableSequence[Any], key: str, field: Field
-) -> RedisList[Any]:
-    return (
-        RedisModelList(key, values, item_class=field.args[0], cascade=field.cascade)
-        if field.args and issubclass(field.args[0], IModel)
-        else RedisList(key, values, item_class=field.args[0])
-    )
 
 
 @type_dispatch
-async def deserialize_field(_: type[Any], value: RedisValue, field: Field) -> Any:
+async def deserialize(_: type[Any], value: RedisValue) -> Any:
     return json.loads(value) if isinstance(value, (str, bytes)) else value
 
 
-@deserialize_field.register(str)
-@deserialize_field.register(bytes)
-@deserialize_field.register(memoryview)
-async def _(
-    _: type[str | bytes | memoryview], value: RedisValue, field: Field
-) -> RedisValue:
+@deserialize.register(str)
+@deserialize.register(bytes)
+@deserialize.register(memoryview)
+async def _(_: type[str | bytes | memoryview], value: RedisValue) -> RedisValue:
     return value
 
 
-@deserialize_field.register(IModel)
-async def _(value_type: type[IModel], value: Key, _: Field) -> IModel:
+@deserialize.register(IModel)
+async def _(value_type: type[IModel], value: Key) -> IModel:
     return await value_type.get(value)
-
-
-@deserialize_field.register(collections.abc.Set)
-async def _(_: type[set[Any]], value: Key, field: Field) -> RedisCollection[Any]:
-    item_class = field.args[0]
-    if issubclass(item_class, IModel):
-        return await RedisModelSet.get(
-            value,
-            item_class=item_class,
-            eager=field.eager,
-            cascade=field.cascade,
-        )
-    else:
-        return await RedisSet.get(
-            value,
-            eager=field.eager,
-            item_class=item_class,
-        )
-
-
-@deserialize_field.register(collections.abc.MutableSequence)
-async def _(_: type[list[Any]], value: Key, field: Field) -> RedisCollection[Any]:
-    item_class = field.args[0]
-    if issubclass(item_class, IModel):
-        return await RedisModelList.get(
-            value,
-            item_class=item_class,
-            eager=field.eager,
-            cascade=field.cascade,
-        )
-    else:
-        return await RedisList.get(
-            value,
-            eager=field.eager,
-            item_class=item_class,
-        )

@@ -1,11 +1,12 @@
 import dataclasses
 from dataclasses import field
-from typing import Optional, Set
+from typing import Optional
 
 from aioredis import Redis
 from aioredis.client import Pipeline
 
 from aio_rom import DataclassModel as Model
+from aio_rom.collections import RedisSet
 from aio_rom.exception import ModelNotFoundException
 
 from . import CoroutineMock, MagicMock, RedisTestCase, patch
@@ -16,7 +17,7 @@ class ForTesting(Model):
     f1: int
     f2: Optional[str] = None
     f3: int = 3
-    f4: Set[int] = field(default_factory=set)
+    f4: RedisSet[int] = field(default_factory=RedisSet[int])
 
 
 class ModelTestCase(RedisTestCase):
@@ -27,6 +28,7 @@ class ModelTestCase(RedisTestCase):
         self.mock_redis_transaction.srem = CoroutineMock()
         self.mock_redis_transaction.sadd = CoroutineMock()
         self.mock_redis_transaction.hset = CoroutineMock()
+        self.mock_redis_transaction.hdel = CoroutineMock()
         self.mock_redis_client = MagicMock(autospec=Redis)
         self.mock_redis_client.pipeline.return_value = self.mock_redis_transaction
         self.transaction_patcher = patch("aio_rom.model.transaction")
