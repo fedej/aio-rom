@@ -44,11 +44,6 @@ class GenericCollection:
 
         if not isinstance(params, tuple):
             params = (params,)
-        if not hasattr(cls, "__parameters__"):
-            raise TypeError(
-                f"Type {cls.__name__} must inherit from "
-                "typing.Generic before being parameterized"
-            )
 
         cls_dict = dict(cls.__dict__)
         cls_dict["item_class"] = params[0]
@@ -58,21 +53,18 @@ class GenericCollection:
 
 
 class RedisCollection(
+    Generic[T],
     GenericCollection,
     Collection[T],
     IModel,
-    Generic[T],
     AsyncIterable[T],
     Iterable[T],
     metaclass=ABCMeta,
 ):
     item_class: ClassVar[type]
 
-    def __set_name__(self, owner: Any, name: str) -> None:
-        self.id: Key | None = name
-
     def __init__(self, values: Collection[T] | None = None, id: Key | None = None):
-        self.id = id
+        self.id = id  # type: ignore[assignment]
         self.values = values
 
     @property
@@ -86,7 +78,7 @@ class RedisCollection(
     def db_id(self) -> str:
         if not self.id:
             raise AttributeError("id must be set")
-        return f"{self.prefix()}:{str(self.id)}"
+        return super().db_id()
 
     @abstractmethod
     async def save_redis_values(

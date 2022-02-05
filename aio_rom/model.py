@@ -16,16 +16,9 @@ _logger = logging.getLogger(__name__)
 M = TypeVar("M", bound="Model")
 
 
-class Model:
+class Model(IModel):
     NotFoundException: ClassVar[Type[ModelNotFoundException]]
     id: Key
-
-    def __init_subclass__(cls: type[M], **kwargs: Any) -> None:
-        cls.NotFoundException = type("NotFoundException", (ModelNotFoundException,), {})
-
-    @classmethod
-    def prefix(cls) -> str:
-        return f"{cls.__name__.lower()}"
 
     @classmethod
     async def get(cls: type[M], id: Key) -> M:
@@ -88,9 +81,6 @@ class Model:
         async with connection() as conn:
             return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
-    def db_id(self) -> str:
-        return f"{self.prefix()}:{str(self.id)}"
-
     async def save(self, optimistic: bool = False, _: bool = False) -> None:
         watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
@@ -147,11 +137,8 @@ class Model:
     async def refresh(self: M) -> M:
         return await type(self).get(self.id)
 
-    async def load(self) -> None:
-        """Model references are eager by default"""
-
     def __setattr__(self, key: str, value: Any) -> None:
         model_fields = fields(self)
-        if isinstance(value, IModel) and not getattr(value, "id", None):
-            value.id = f"{self.db_id()}:{model_fields[key].name}"  # type: ignore[attr-defined] # noqa
+        if isinstance(value, IModel) and not value.id:
+            value.id = f"{self.db_id()}:{model_fields[key].name}"
         super().__setattr__(key, value)

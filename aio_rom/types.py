@@ -1,22 +1,29 @@
 from __future__ import annotations
 
-from typing import Optional, TypeVar, Union
+from abc import ABC
+from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
-from typing_extensions import Protocol, runtime_checkable
+
+from aio_rom.exception import ModelNotFoundException
 
 Key = KeyT
 T = TypeVar("T", bound="IModel")
 
 
-@runtime_checkable
-class IModel(Protocol):
+class IModel(ABC):
+    NotFoundException: ClassVar[Type[ModelNotFoundException]]
+    id: Key
+
     @classmethod
     def prefix(cls) -> str:
         return f"{cls.__name__.lower()}"
 
-    def db_id(self) -> Key:
-        ...
+    def __init_subclass__(cls: type[T], **kwargs: Any) -> None:
+        cls.NotFoundException = type("NotFoundException", (ModelNotFoundException,), {})
+
+    def db_id(self) -> str:
+        return f"{self.prefix()}:{str(self.id)}"
 
     async def save(self, optimistic: bool = False, cascade: bool = False) -> None:
         ...
@@ -32,7 +39,7 @@ class IModel(Protocol):
         ...
 
     async def load(self) -> None:
-        ...
+        """Model references are eager by default"""
 
 
 RedisValue = FieldT
