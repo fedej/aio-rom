@@ -88,7 +88,7 @@ class RedisCollection(
     ) -> None:
         pass
 
-    async def save(self, optimistic: bool = False, cascade: bool = False) -> None:
+    async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:
         if not self.values:
             return
 
@@ -102,7 +102,7 @@ class RedisCollection(
             await tr.sadd(self.prefix(), self.id)
             if cascade:
                 await asyncio.gather(
-                    *[v.save(optimistic) for v in self.values if isinstance(v, IModel)]
+                    *[v.save(optimistic=optimistic) for v in self.values if isinstance(v, IModel)]
                 )
 
     @classmethod
@@ -177,7 +177,7 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
         async with connection() as conn:
             await conn.sadd(self.db_id(), serialize(value))
             if cascade and isinstance(value, IModel):
-                await value.save(optimistic)
+                await value.save(optimistic=optimistic)
         self.add(value)
 
     async def async_discard(self, value: T, cascade: bool = False) -> None:
@@ -232,7 +232,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
         async with connection() as conn:
             await conn.rpush(self.db_id(), serialize(value))
             if cascade and isinstance(value, IModel):
-                await value.save(optimistic)
+                await value.save(optimistic=optimistic)
         self.append(value)
 
     async def __aiter__(self) -> AsyncIterator[T]:

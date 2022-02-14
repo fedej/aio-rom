@@ -25,7 +25,7 @@ class IModel(ABC):
     def db_id(self) -> str:
         return f"{self.prefix()}:{str(self.id)}"
 
-    async def save(self, optimistic: bool = False, cascade: bool = False) -> None:
+    async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:
         ...
 
     @classmethod

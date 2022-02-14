@@ -81,7 +81,7 @@ class Model(IModel):
         async with connection() as conn:
             return bool(await conn.exists(f"{cls.prefix()}:{id}"))
 
-    async def save(self, optimistic: bool = False, _: bool = False) -> None:
+    async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:
         watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
             await self.update(optimistic=optimistic)
