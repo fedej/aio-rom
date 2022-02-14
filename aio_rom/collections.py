@@ -102,7 +102,11 @@ class RedisCollection(
             await tr.sadd(self.prefix(), self.id)
             if cascade:
                 await asyncio.gather(
-                    *[v.save(optimistic=optimistic) for v in self.values if isinstance(v, IModel)]
+                    *[
+                        v.save(optimistic=optimistic)
+                        for v in self.values
+                        if isinstance(v, IModel)
+                    ]
                 )
 
     @classmethod
