@@ -6,10 +6,14 @@ def type_dispatch(f):
     f = ft_singledispatch(f)
 
     @wraps(f)
-    def inner(*args, **kw):
-        if not args:
+    async def inner(value_type: type, *args, **kw):
+        if not value_type:
             raise TypeError(f"{f.__name__} requires at least 1 positional argument")
-        return f.dispatch(args[0])(*args, **kw)
+
+        value = await f.dispatch(value_type)(value_type, *args, **kw)
+        if not isinstance(value, value_type):
+            raise TypeError(f"{value} is not an instance of {value_type}")
+        return value
 
     def delegate(attr):
         return getattr(f, attr)

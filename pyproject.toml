@@ -39,6 +39,8 @@ isort = "^5.9.3"
 bandit = "^1.7.2"
 flake8-bugbear = "^22.1.11"
 flake8-comprehensions = "^3.8.0"
+ujson = "^5.1.0"
+orjson = "^3.6.6"
 
 [tool.poetry-version-plugin]
 source = "git-tag"
@@ -79,6 +81,8 @@ deps =
     pytest
     pytest-cov
     pytest-benchmark
+    orjson
+    ujson
 passenv = CI
 extras = mypy
 setenv = MYPY_TEST_PREFIX = tests
@@ -107,6 +111,8 @@ commands =
 deps =
     mypy
     pytest
+    orjson
+    ujson
 commands = mypy --install-types --non-interactive --strict aio_rom tests
 
 [testenv:clean]

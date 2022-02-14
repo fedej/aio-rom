@@ -3,15 +3,17 @@ from __future__ import annotations
 import dataclasses
 import functools
 import json
-from asyncio.coroutines import iscoroutine
-from typing import Any, Awaitable, ClassVar, TypeVar
+from typing import Any, Callable, ClassVar, TypeVar
 
-from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
+from typing_extensions import get_args, get_origin, get_type_hints
 
 from .types import IModel, Key, RedisValue, Serializable
 from .utils import type_dispatch
 
 T = TypeVar("T")
+
+serializer: Callable[[Serializable], RedisValue] = json.dumps
+deserializer: Callable[[RedisValue], Any] = json.loads
 
 
 @dataclasses.dataclass
@@ -78,17 +80,13 @@ def fields(obj: Any) -> dict[str, Field]:
     return type_fields(obj if isinstance(obj, type) else type(obj))
 
 
-def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
-    return iscoroutine(val)
-
-
 def serialize_dict(changes: dict[str, Serializable]) -> dict[str, RedisValue]:
     return {f: serialize(value) for f, value in changes.items()}
 
 
 @functools.singledispatch
-def serialize(value: Serializable) -> RedisValue:
-    raise TypeError(f"Serialization of '{type(value)}' not supported")
+def serialize(value: Any) -> RedisValue:
+    return serializer(value)
 
 
 @serialize.register(IModel)
@@ -101,22 +99,17 @@ def _(value: IModel) -> RedisValue:
     return model_id
 
 
-@serialize.register(int)
-@serialize.register(float)
-@serialize.register(bool)
-def _(value: int | float | bool) -> RedisValue:
-    return json.dumps(value)
-
-
 @serialize.register(type(None))
 @serialize.register(str)
-def _(value: str) -> RedisValue:
+@serialize.register(bytes)
+@serialize.register(memoryview)
+def _(value: str | bytes | memoryview) -> RedisValue:
     return value
 
 
 @type_dispatch
 async def deserialize(_: type[Any], value: RedisValue) -> Any:
-    return json.loads(value) if isinstance(value, (str, bytes)) else value
+    return deserializer(value) if isinstance(value, (str, bytes)) else value
 
 
 @deserialize.register(str)
