@@ -20,7 +20,6 @@ from typing import (
 
 from aioredis.client import Pipeline, Redis
 
-from .exception import ModelNotFoundException
 from .fields import deserialize, serialize
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue, Serializable
@@ -111,13 +110,9 @@ class RedisCollection(
 
     @classmethod
     async def get(cls: Type[RedisCollection[T]], id: Key) -> RedisCollection[T]:
-        key = f"{cls.prefix()}:{str(id)}"
-        async with connection() as conn:
-            if not bool(await conn.exists(key)):
-                raise ModelNotFoundException(f"Collection with key {key} not found")
-            return cls(id=id)
+        return cls(id=id)
 
-    async def load(self) -> None:
+    async def refresh(self) -> None:
         async with connection() as redis:
             self.values = await asyncio.gather(
                 *[
@@ -246,8 +241,3 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
                 item = await deserialize(self.item_class, value)
                 self.insert(index, item)
                 yield item
-
-
-@serialize.register(RedisCollection)
-def _(value: RedisCollection[Any]) -> RedisValue | None:
-    return value.id if value else None

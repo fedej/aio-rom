@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 from aioredis.client import FieldT, KeyT
 
 from aio_rom.exception import ModelNotFoundException
+from aio_rom.session import connection
 
 Key = KeyT
 T = TypeVar("T", bound="IModel")
@@ -32,14 +33,30 @@ class IModel(ABC):
     async def get(cls: type[T], id: Key) -> T:
         ...
 
+    @classmethod
+    async def persisted(cls: type[T], id: int) -> bool:
+        async with connection() as conn:
+            return bool(await conn.exists(f"{cls.prefix()}:{id}"))
+
+    @classmethod
+    async def delete_all(cls: type[T]) -> None:
+        key_prefix = cls.prefix()
+        async with connection() as conn:
+            keys = await conn.keys(f"{key_prefix}:*")
+            await conn.delete(key_prefix, *keys)
+
     async def total_count(self) -> int:
         ...
 
     async def delete(self, cascade: bool = False) -> None:
         ...
 
-    async def load(self) -> None:
-        """Model references are eager by default"""
+    async def exists(self) -> bool:
+        async with connection() as conn:
+            return bool(await conn.exists(self.db_id()))
+
+    async def refresh(self: T) -> None:
+        ...
 
 
 RedisValue = FieldT

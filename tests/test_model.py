@@ -41,6 +41,11 @@ class ModelTestCase(RedisTestCase):
         self.connection_mock.return_value.__aenter__.return_value = (
             self.mock_redis_client
         )
+        self.abc_connection_patcher = patch("aio_rom.types.connection")
+        self.abc_connection_mock = self.abc_connection_patcher.start()
+        self.abc_connection_mock.return_value.__aenter__.return_value = (
+            self.mock_redis_client
+        )
 
     async def asyncTearDown(self) -> None:
         patch.stopall()
@@ -48,7 +53,8 @@ class ModelTestCase(RedisTestCase):
     async def test_save(self) -> None:
         await ForTesting("123", 123).save()
         self.mock_redis_transaction.hset.assert_called_with(
-            "fortesting:123", mapping={"id": "123", "f1": "123", "f3": "3"}
+            "fortesting:123",
+            mapping={"id": "123", "f1": "123", "f3": "3", "f4": "fortesting:123:f4"},
         )
         self.mock_redis_transaction.sadd.assert_called_with("fortesting", "123")
 
@@ -137,7 +143,8 @@ class ModelTestCase(RedisTestCase):
         self.mock_redis_client.hgetall.side_effect = CoroutineMock(
             return_value={"id": "123", "f1": "124"}
         )
-        value = await ForTesting("123", 123).refresh()
+        value = ForTesting("123", 123)
+        await value.refresh()
         assert "123" == value.id
         assert 124 == value.f1
         assert ForTesting("123", 124) == value
