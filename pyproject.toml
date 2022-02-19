@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aio-rom"
-version = "0"
+version = "0.1.5"
 description = "asyncio based Redis object mapper"
 authors = ["Federico Jaite <fede_654_87@hotmail.com>"]
 license = "MIT"
