@@ -33,12 +33,12 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
             for item in redis_collection:
                 assert await Foo.get(item.id) == item
             fresh = await redis_collection.get(redis_collection.id)
-            await fresh.load()
+            await fresh.refresh()
             assert redis_collection == fresh
         else:
-            with self.assertRaises(ModelNotFoundException):
-                collection = await redis_collection.get(redis_collection.id)
-                await collection.load()
+            for item in redis_collection:
+                with self.assertRaises(ModelNotFoundException):
+                    await Foo.get(item.id)
 
     async def test_save_model_list(self) -> None:
         redis_list = RedisList[Foo]([self.foo], id="test")
@@ -67,7 +67,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
             assert ["1", "2", "3"] == await redis.lrange("redislist:int_list", 0, -1)
 
         int_list = await RedisList[int].get("int_list")
-        await int_list.load()
+        await int_list.refresh()
         assert [1, 2, 3] == int_list.values
 
     async def test_save_redis_set(self) -> None:
@@ -80,7 +80,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
             assert {"test", "ing"} == await redis.smembers("redisset:some_set")
 
         some_set = await RedisSet[str].get("some_set")
-        await some_set.load()
+        await some_set.refresh()
         assert {"test", "ing"} == some_set.values
 
     async def test_iteration_set(self) -> None:
@@ -117,7 +117,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         await a_set.async_discard("456")
         assert len(a_set) == 1
         new_set = await RedisSet[str].get("a_set")
-        await new_set.load()
+        await new_set.refresh()
         assert a_set == new_set
 
     async def test_async_list(self) -> None:
@@ -126,7 +126,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         await a_list.async_append("456")
         assert len(a_list) == 2
         saved_list = await RedisList[str].get("a_list")
-        await saved_list.load()
+        await saved_list.refresh()
         assert saved_list == a_list
 
     async def test_async_model_set(self) -> None:
@@ -137,7 +137,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         await a_set.async_discard(Foo("456", 456), cascade=True)
         assert len(a_set) == 1
         saved_set = await RedisSet[Foo].get("a_set")
-        await saved_set.load()
+        await saved_set.refresh()
         assert saved_set == a_set
 
     async def test_async_model_list(self) -> None:
@@ -146,7 +146,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         await a_list.async_append(Foo("456", 456), cascade=True)
         assert len(a_list) == 2
         saved_list = await RedisList[Foo].get("a_list")
-        await saved_list.load()
+        await saved_list.refresh()
         assert saved_list == a_list
 
     async def test_delete(self) -> None:
@@ -155,8 +155,7 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         await a_list.async_append("456", cascade=True)
         assert len(a_list) == 2
         await a_list.delete()
-        with self.assertRaises(ModelNotFoundException):
-            await RedisList.get("a_list")
+        self.assertFalse(await RedisList(id="a_list").exists())
 
     async def test_delete_model(self) -> None:
         a_list = RedisList[Foo](id="a_list")
@@ -165,7 +164,6 @@ class RedisCollectionIntegrationTestCase(RedisTestCase):
         assert len(a_list) == 2
         assert await Foo.get("123")
         await a_list.delete(cascade=True)
-        with self.assertRaises(ModelNotFoundException):
-            await RedisList[Foo].get("a_list")
+        self.assertFalse(await RedisList[Foo](id="a_list").exists())
         with self.assertRaises(ModelNotFoundException):
             await Foo.get("123")

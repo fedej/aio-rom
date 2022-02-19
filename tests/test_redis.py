@@ -51,6 +51,8 @@ class RedisIntegrationTestCase(RedisTestCase):
         await Foo.delete_all()
         await Bar.delete_all()
         await FooBar.delete_all()
+        await RedisList.delete_all()
+        await RedisSet.delete_all()
 
     async def test_save(self) -> None:
         await self.bar.save()
@@ -66,6 +68,21 @@ class RedisIntegrationTestCase(RedisTestCase):
         assert "bar:1:field3" == field3
         assert ["1", "2", "3"] == field3_value
 
+    async def test_save_with_empty_reference(self) -> None:
+        self.bar.field3 = RedisList[int]()
+        await self.bar.save()
+
+        async with connection() as redis:
+            field1 = await redis.hget("bar:1", "field1")
+            field2 = await redis.hget("bar:1", "field2")
+            field3 = await redis.hget("bar:1", "field3")
+            field3_value = await redis.lrange("redislist:bar:1:field3", 0, -1)
+
+        assert "123" == field1
+        assert "value" == field2
+        assert "bar:1:field3" == field3
+        assert [] == field3_value
+
     async def test_get(self) -> None:
         await self.bar.save()
         bar = await Bar.get("1")
@@ -79,7 +96,7 @@ class RedisIntegrationTestCase(RedisTestCase):
         assert foo == gotten_foo
         assert isinstance(gotten_foo.lazy_bars, RedisSet)
         assert 1 == await gotten_foo.lazy_bars.total_count()
-        await gotten_foo.lazy_bars.load()
+        await gotten_foo.lazy_bars.refresh()
         for bar in gotten_foo.lazy_bars:
             assert bar in foo.lazy_bars
         assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)
@@ -100,7 +117,7 @@ class RedisIntegrationTestCase(RedisTestCase):
         for gotten_foo in gotten_foobar.foos:
             assert 1 == len(gotten_foo.eager_bars)
             assert isinstance(gotten_foo.lazy_bars, RedisSet)
-            await gotten_foo.lazy_bars.load()
+            await gotten_foo.lazy_bars.refresh()
             for bar in gotten_foo.lazy_bars:
                 assert bar in foo.lazy_bars
 
@@ -115,13 +132,13 @@ class RedisIntegrationTestCase(RedisTestCase):
         foo = Foo("123", RedisList[Bar]([self.bar]), RedisSet[Bar]({self.bar}))
         foobar = FooBar("321", RedisSet[Foo]({foo}))
         await foobar.save()
-        refreshed = await foobar.refresh()
+        await foobar.refresh()
         foo2 = Foo("222", RedisList[Bar]([]), RedisSet[Bar](set()))
-        refreshed.foos.add(foo2)
-        await refreshed.save()
+        foobar.foos.add(foo2)
+        await foobar.save()
 
         gotten_foobar = await FooBar.get("321")
-        assert refreshed == gotten_foobar
+        assert foobar == gotten_foobar
         assert {foo, foo2} == gotten_foobar.foos
 
     async def test_update(self) -> None:
@@ -182,11 +199,11 @@ class RedisIntegrationTestCase(RedisTestCase):
         foo = await Foo.get("123")
         other_bar = Bar("2", 124, "value2", RedisList[int]())
         assert isinstance(foo.lazy_bars, RedisSet)
-        await foo.lazy_bars.load()
+        await foo.lazy_bars.refresh()
         foo.lazy_bars.add(other_bar)
         await foo.save()
         gotten_foo = await Foo.get("123")
         assert foo == gotten_foo
         assert isinstance(gotten_foo.lazy_bars, RedisSet)
-        await gotten_foo.lazy_bars.load()
+        await gotten_foo.lazy_bars.refresh()
         assert 2 == len(foo.lazy_bars) == len(gotten_foo.lazy_bars)

@@ -18,7 +18,6 @@ M = TypeVar("M", bound="Model")
 
 class Model(IModel):
     NotFoundException: ClassVar[Type[ModelNotFoundException]]
-    id: Key
 
     @classmethod
     async def get(cls: type[M], id: Key) -> M:
@@ -36,7 +35,7 @@ class Model(IModel):
         async def deserialize_field(field: Field, value: RedisValue) -> Any:
             value = await deserialize(field.type, value)
             if isinstance(value, IModel) and field.eager:
-                await value.load()
+                await value.refresh()
             return value
 
         deserialized = await asyncio.gather(
@@ -69,18 +68,6 @@ class Model(IModel):
         async with connection() as conn:
             return int(await conn.scard(cls.prefix()))
 
-    @classmethod
-    async def delete_all(cls: type[M]) -> None:
-        key_prefix = cls.prefix()
-        async with connection() as conn:
-            keys = await conn.keys(f"{key_prefix}:*")
-            await conn.delete(key_prefix, *keys)
-
-    @classmethod
-    async def persisted(cls: type[M], id: int) -> bool:
-        async with connection() as conn:
-            return bool(await conn.exists(f"{cls.prefix()}:{id}"))
-
     async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:
         watch = [self.db_id()] if optimistic else []
         async with transaction(*watch) as tr:
@@ -99,7 +86,11 @@ class Model(IModel):
         }
 
         model_dict = serialize_dict(
-            {k: v for k, v in values.items() if not model_fields[k].optional or v}
+            {
+                k: v
+                for k, v in values.items()
+                if not (model_fields[k].optional and v is None)
+            }
         )
         watch = [self.db_id()] if optimistic else []
         operations: list[Awaitable[None]] = [
@@ -130,12 +121,11 @@ class Model(IModel):
                 await tr.delete(*keys, key)
                 await tr.srem(self.prefix(), key)
 
-    async def exists(self) -> bool:
-        async with connection() as conn:
-            return bool(await conn.exists(self.db_id()))
-
-    async def refresh(self: M) -> M:
-        return await type(self).get(self.id)
+    async def refresh(self: M) -> None:
+        fresh = await type(self).get(self.id)
+        for name, field in fields(self).items():
+            if not field.transient:
+                setattr(self, name, getattr(fresh, name))
 
     def __setattr__(self, key: str, value: Any) -> None:
         model_fields = fields(self)

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from aioredis import ConnectionPool, Redis
 from aioredis.client import Pipeline
 
-from aio_rom.types import Key
+if TYPE_CHECKING:
+    from aio_rom.types import Key
 
 POOL: ContextVar[ConnectionPool | None] = ContextVar("pool", default=None)
 CONNECTION: ContextVar[Redis | None] = ContextVar("connection", default=None)
