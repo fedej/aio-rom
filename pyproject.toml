@@ -37,7 +37,7 @@ pytest = "^6.2.5"
 pytest-benchmark = "^3.4.1"
 isort = "^5.9.3"
 bandit = "^1.7.2"
-flake8-bugbear = "^22.1.11"
+flake8-bugbear = "^22.4.25"
 flake8-comprehensions = "^3.8.0"
 
 [tool.poetry-version-plugin]
