@@ -38,7 +38,7 @@ jobs:
         run: CI=true tox
       - name: Upload coverage.xml
         if: ${{ matrix.redis-version == '5' && matrix.python-version == '3.9' }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: rom-coverage
           path: coverage.xml
