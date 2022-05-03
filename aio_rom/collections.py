@@ -146,7 +146,7 @@ class RedisCollection(
     def __repr__(self) -> str:
         return repr(self.values)
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         return self.values == (
             other.values if isinstance(other, RedisCollection) else other
         )
