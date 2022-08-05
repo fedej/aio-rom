@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Iterable
 from operator import attrgetter
 from typing import Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
 
@@ -58,10 +57,10 @@ class Model(IModel):
                         _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @classmethod
-    async def all(cls: type[M]) -> Iterable[M]:
+    async def all(cls: type[M]) -> list[M]:
         async with connection() as conn:
             keys = await conn.smembers(cls.prefix())
-            return await asyncio.gather(*[cls.get(key) for key in keys])
+            return list(await asyncio.gather(*[cls.get(key) for key in keys]))
 
     @classmethod
     async def total_count(cls) -> int:
