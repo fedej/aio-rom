@@ -18,7 +18,7 @@ from typing import (
     TypeVar,
 )
 
-from aioredis.client import Pipeline, Redis
+from redis.asyncio.client import Pipeline, Redis
 
 from .fields import deserialize, serialize
 from .session import connection, transaction
@@ -114,12 +114,13 @@ class RedisCollection(
 
     async def refresh(self) -> None:
         async with connection() as redis:
-            self.values = await asyncio.gather(
-                *[
-                    deserialize(self.item_class, value)
-                    for value in await self.get_redis_values(redis)
-                ]
-            )
+            self.values = [
+                deserialize(self.item_class, value)
+                for value in await self.get_redis_values(redis)
+            ]
+
+            if issubclass(self.item_class, IModel):
+                self.values = await asyncio.gather(*self.values)
 
     @abstractmethod
     async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
@@ -193,7 +194,9 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
     async def __aiter__(self) -> AsyncIterator[T]:
         async with connection() as conn:
             async for value in conn.sscan_iter(self.db_id()):
-                item = await deserialize(self.item_class, value)
+                item = deserialize(self.item_class, value)
+                if issubclass(self.item_class, IModel):
+                    item = await item
                 self.add(item)
                 yield item
 
@@ -238,6 +241,8 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
         async with connection() as conn:
             for index in range(0, await conn.llen(self.db_id())):
                 value = await conn.lindex(self.db_id(), index)
-                item = await deserialize(self.item_class, value)
+                item = deserialize(self.item_class, value)
+                if issubclass(self.item_class, IModel):
+                    item = await item
                 self.insert(index, item)
                 yield item

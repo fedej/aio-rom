@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from aioredis import ConnectionPool, Redis
-from aioredis.client import Pipeline
+from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio.client import Pipeline
 
 if TYPE_CHECKING:
     from aio_rom.types import Key

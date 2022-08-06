@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from operator import attrgetter
 from typing import Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
 
 from .exception import ModelNotFoundException
-from .fields import Field, deserialize, fields, serialize_dict
+from .fields import deserialize, fields, serialize_dict
 from .session import connection, transaction
 from .types import IModel, Key, RedisValue
 
@@ -27,21 +26,19 @@ class Model(IModel):
         if not db_item:
             raise cls.NotFoundException(f"{key} not found")
 
-        model_fields = [
-            f for field_name, f in fields(cls).items() if field_name in db_item
-        ]
+        deserialized = {}
+        for field_name, f in filter(
+            lambda item: item[0] in db_item, fields(cls).items()
+        ):
+            field_type = f.type
+            value = deserialize(field_type, db_item[field_name])
+            if issubclass(field_type, IModel):
+                value = await value
+                if f.eager:
+                    await value.refresh()
+            deserialized[field_name] = value
 
-        async def deserialize_field(field: Field, value: RedisValue) -> Any:
-            value = await deserialize(field.type, value)
-            if isinstance(value, IModel) and field.eager:
-                await value.refresh()
-            return value
-
-        deserialized = await asyncio.gather(
-            *(deserialize_field(f, db_item[f.name]) for f in model_fields)
-        )
-
-        return cls(**dict(zip(map(attrgetter("name"), model_fields), deserialized)))
+        return cls(**deserialized)
 
     @classmethod
     async def scan(cls: type[M], **kwargs: str | None | int | None) -> AsyncIterator[M]:

@@ -26,8 +26,8 @@ include = ["aio_rom/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aioredis = "2.0.1"
 typing-extensions = ">=4.4.0,<5.0"
+redis = "^4.3.4"
 
 [tool.poetry.dev-dependencies]
 black = "^22.10.0"
@@ -36,6 +36,7 @@ mypy = "^0.982"
 pytest = "^7.2.0"
 pytest-asyncio = "^0.20.1"
 pytest-benchmark = "^4.0.0"
+pytest-profiling = "^1.7.0"
 isort = "^5.10.1"
 bandit = "^1.7.4"
 flake8-bugbear = "^22.10.27"

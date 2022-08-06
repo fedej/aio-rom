@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
-from aioredis.client import FieldT, KeyT
+from redis.typing import FieldT, KeyT
 
 from aio_rom.exception import ModelNotFoundException
 from aio_rom.session import connection

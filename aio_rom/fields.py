@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import json
-from asyncio.coroutines import iscoroutine
-from typing import Any, Awaitable, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar
 
-from typing_extensions import TypeGuard, get_args, get_origin, get_type_hints
+from typing_extensions import get_args, get_origin, get_type_hints
 
 from .types import IModel, Key, RedisValue, Serializable
 from .utils import type_dispatch
@@ -78,10 +76,6 @@ def fields(obj: Any) -> dict[str, Field]:
     return type_fields(obj if isinstance(obj, type) else type(obj))
 
 
-def _is_coroutine_serializable(val: Any) -> TypeGuard[Awaitable[Serializable]]:
-    return iscoroutine(val)
-
-
 def serialize_dict(changes: dict[str, Serializable]) -> dict[str, RedisValue]:
     return {f: serialize(value) for f, value in changes.items()}
 
@@ -101,11 +95,15 @@ def _(value: IModel) -> RedisValue:
     return model_id
 
 
+@serialize.register(bool)
+def _(value: bool) -> RedisValue:
+    return value.to_bytes(1, "little")
+
+
 @serialize.register(int)
 @serialize.register(float)
-@serialize.register(bool)
-def _(value: int | float | bool) -> RedisValue:
-    return json.dumps(value)
+def _(value: int | float) -> RedisValue:
+    return str(value)
 
 
 @serialize.register(type(None))
@@ -115,15 +113,26 @@ def _(value: str) -> RedisValue:
 
 
 @type_dispatch
-async def deserialize(_: type[Any], value: RedisValue) -> Any:
-    return json.loads(value) if isinstance(value, (str, bytes)) else value
+def deserialize(value_type: type[Any], value: RedisValue) -> Any:
+    raise TypeError(f"Cannot deserialize {value} to type {value_type}")
 
 
 @deserialize.register(str)
 @deserialize.register(bytes)
 @deserialize.register(memoryview)
-async def _(_: type[str | bytes | memoryview], value: RedisValue) -> RedisValue:
+def _(_: type[str | bytes | memoryview], value: RedisValue) -> RedisValue:
     return value
+
+
+@deserialize.register(int)
+@deserialize.register(float)
+def _(value_type: type[int | float], value: RedisValue) -> RedisValue:
+    return value_type(value)
+
+
+@deserialize.register(bool)
+def _(value_type: type[bool], value: RedisValue) -> RedisValue:
+    return value_type.from_bytes(value, "little")
 
 
 @deserialize.register(IModel)
