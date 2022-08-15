@@ -53,7 +53,7 @@ async def test_save(mock_redis_transaction: MagicMock) -> None:
     await ForTesting("123", 123).save()
     mock_redis_transaction.hset.assert_called_with(
         "fortesting:123",
-        mapping={"id": "123", "f1": "123", "f3": "3", "f4": "fortesting:123:f4"},
+        mapping={"id": "123", "f1": 123, "f3": 3, "f4": "fortesting:123:f4"},
     )
     mock_redis_transaction.sadd.assert_called_with("fortesting", "123")
 
@@ -61,7 +61,7 @@ async def test_save(mock_redis_transaction: MagicMock) -> None:
 async def test_update(mock_redis_transaction: MagicMock) -> None:
     await ForTesting("123", 123).update(f1=987)
     mock_redis_transaction.hset.assert_called_once_with(
-        "fortesting:123", mapping={"f1": "987"}
+        "fortesting:123", mapping={"f1": 987}
     )
     mock_redis_transaction.sadd.assert_not_called()
 

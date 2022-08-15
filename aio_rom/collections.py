@@ -7,6 +7,7 @@ from typing import (
     Any,
     AsyncIterable,
     AsyncIterator,
+    Awaitable,
     ClassVar,
     Collection,
     Generic,
@@ -16,6 +17,7 @@ from typing import (
     MutableSet,
     Type,
     TypeVar,
+    cast,
 )
 
 from redis.asyncio.client import Pipeline, Redis
@@ -46,7 +48,10 @@ class GenericCollection:
 
         cls_dict = dict(cls.__dict__)
         cls_dict["item_class"] = params[0]
+        slots = cls_dict.pop("__slots__", None)
         generic_collection = type(cls.__name__, (cls,), cls_dict)
+        if slots:
+            generic_collection.__slots__ = slots  # type: ignore[attr-defined]
         _generic_types_cache[(cls, params[0])] = generic_collection
         return generic_collection
 
@@ -60,6 +65,8 @@ class RedisCollection(
     Iterable[T],
     metaclass=ABCMeta,
 ):
+    __slots__ = ("_values",)
+
     item_class: ClassVar[type]
 
     def __init__(self, values: Collection[T] | None = None, id: Key | None = None):
@@ -82,7 +89,7 @@ class RedisCollection(
     @abstractmethod
     async def save_redis_values(
         self,
-        tr: Pipeline,
+        tr: Pipeline[str],
         values: Collection[Any],
     ) -> None:
         pass
@@ -101,11 +108,11 @@ class RedisCollection(
             await tr.sadd(self.prefix(), self.id)
             if cascade:
                 await asyncio.gather(
-                    *[
+                    *(
                         v.save(optimistic=optimistic)
                         for v in self.values
                         if isinstance(v, IModel)
-                    ]
+                    )
                 )
 
     @classmethod
@@ -120,10 +127,12 @@ class RedisCollection(
             ]
 
             if issubclass(self.item_class, IModel):
-                self.values = await asyncio.gather(*self.values)
+                self.values = await asyncio.gather(
+                    *cast(List[Awaitable[IModel]], self.values)
+                )
 
     @abstractmethod
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         pass
 
     async def delete(self, cascade: bool = False) -> None:
@@ -163,11 +172,11 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
             self, set(values) if values else set()
         )
 
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         return set(await redis.smembers(self.db_id()))
 
     async def save_redis_values(
-        self, tr: Pipeline, values: Collection[RedisValue]
+        self, tr: Pipeline[str], values: Collection[RedisValue]
     ) -> None:
         await tr.sadd(self.db_id(), *values)
 
@@ -216,7 +225,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
     def values(self, values: Collection[T] | None) -> None:
         self.data = list(values) if values else []
 
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         return list(await redis.lrange(self.db_id(), 0, -1))
 
     async def total_count(self) -> int:
@@ -224,7 +233,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
             return int(await conn.llen(self.db_id()))
 
     async def save_redis_values(
-        self, tr: Pipeline, values: Collection[RedisValue]
+        self, tr: Pipeline[str], values: Collection[RedisValue]
     ) -> None:
         await tr.rpush(self.db_id(), *values)
 
