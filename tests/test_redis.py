@@ -24,6 +24,8 @@ class Bar(Model):
         default_factory=RedisList[int], hash=False
     )
     field4: int = 3
+    field5: bool = True
+    field6: typing.Optional[bool] = None
 
 
 @dataclasses.dataclass(unsafe_hash=True)
@@ -66,12 +68,18 @@ async def test_save(bar: Bar) -> None:
         field1 = await redis.hget("bar:1", "field1")
         field2 = await redis.hget("bar:1", "field2")
         field3 = await redis.hget("bar:1", "field3")
+        field4 = await redis.hget("bar:1", "field4")
+        field5 = await redis.hget("bar:1", "field5")
+        field6 = await redis.hget("bar:1", "field6")
         field3_value = await redis.lrange("redislist:bar:1:field3", 0, -1)
 
     assert "123" == field1
     assert "value" == field2
     assert "bar:1:field3" == field3
     assert ["1", "2", "3"] == field3_value
+    assert "3" == field4
+    assert "\x01" == field5
+    assert field6 is None
 
 
 async def test_save_with_empty_reference(bar: Bar) -> None:

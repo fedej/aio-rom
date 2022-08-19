@@ -108,9 +108,7 @@ def fields(obj: Any) -> dict[str, Field]:
 @functools.singledispatch
 def serialize(value: Serializable) -> RedisValue:
     if isinstance(value, (str, int, float, bytes, memoryview)):
-        return value
-    if isinstance(value, bool):
-        return value.to_bytes(1, "little")
+        return value.to_bytes(1, "little") if isinstance(value, bool) else value
     if isinstance(value, IModel):
         if not value.id:
             raise AttributeError(f"{value} has no id")

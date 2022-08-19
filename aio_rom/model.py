@@ -33,7 +33,7 @@ class Model(IModel):
         deserialized = {}
         for f in [f for f in fields(cls).values() if f.name in db_item]:
             value = deserialize(f.field_type, db_item[f.name])
-            if issubclass(f.field_type, IModel):
+            if asyncio.iscoroutine(value):
                 value = await value
                 if f.eager:
                     await value.refresh()
@@ -70,7 +70,8 @@ class Model(IModel):
     async def update(self, optimistic: bool = False, **changes: Any) -> None:
         model_fields = fields(self)
         for name, value in changes.items():
-            setattr(self, name, value)
+            if name in model_fields:
+                setattr(self, name, value)
 
         values = [
             (field_name, getattr(self, field_name))
@@ -119,6 +120,5 @@ class Model(IModel):
 
     def __setattr__(self, key: str, value: Any) -> None:
         if isinstance(value, IModel) and not value.id:
-            model_fields = fields(self)
-            value.id = f"{self.db_id()}:{model_fields[key].name}"
+            value.id = f"{self.db_id()}:{key}"
         super().__setattr__(key, value)
