@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
 from aioredis.client import FieldT, KeyT
@@ -26,10 +26,12 @@ class IModel(ABC):
     def db_id(self) -> str:
         return f"{self.prefix()}:{str(self.id)}"
 
+    @abstractmethod
     async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:
         ...
 
     @classmethod
+    @abstractmethod
     async def get(cls: type[T], id: Key) -> T:
         ...
 
@@ -45,9 +47,11 @@ class IModel(ABC):
             keys = await conn.keys(f"{key_prefix}:*")
             await conn.delete(key_prefix, *keys)
 
+    @abstractmethod
     async def total_count(self) -> int:
         ...
 
+    @abstractmethod
     async def delete(self, cascade: bool = False) -> None:
         ...
 
@@ -55,6 +59,7 @@ class IModel(ABC):
         async with connection() as conn:
             return bool(await conn.exists(self.db_id()))
 
+    @abstractmethod
     async def refresh(self: T) -> None:
         ...
 
