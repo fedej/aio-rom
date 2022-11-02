@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Awaitable,
+    ClassVar,
+    Mapping,
+    Type,
+    TypeVar,
+)
 
 from .exception import ModelNotFoundException
 from .fields import deserialize, fields, serialize

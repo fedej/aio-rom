@@ -8,7 +8,7 @@ from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
 
 if TYPE_CHECKING:
-    from .types import Key
+    from aio_rom.types import Key
 
 REDIS_CLIENT: ContextVar[Redis[str] | None] = ContextVar("redis_client", default=None)
 CONNECTION: ContextVar[Redis[str] | None] = ContextVar("connection", default=None)
@@ -32,7 +32,7 @@ async def redis_client(
     if client:
         yield client
         return
-    client = await Redis.from_url(
+    client = Redis.from_url(
         address if address else config.get("address", "redis://localhost"),
         encoding="utf-8",
         decode_responses=True,
@@ -56,6 +56,7 @@ async def connection(
     if connection:
         yield connection
         return
+
     async with redis_client(address, **kwargs) as pool:
         redis = await pool.client()
         t = CONNECTION.set(redis)
@@ -72,6 +73,7 @@ async def transaction(*watches: Key) -> AsyncIterator[Pipeline[str]]:
     if transaction:
         yield transaction
         return
+
     async with connection() as conn, conn.pipeline(transaction=True) as tr:
         if watches:
             await tr.watch(*watches)
