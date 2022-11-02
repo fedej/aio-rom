@@ -108,7 +108,7 @@ def fields(obj: Any) -> dict[str, Field]:
 @functools.singledispatch
 def serialize(value: Serializable) -> RedisValue:
     if isinstance(value, (str, int, float, bytes, memoryview)):
-        return value.to_bytes(1, "little") if isinstance(value, bool) else value
+        return int(value) if isinstance(value, bool) else value
     if isinstance(value, IModel):
         if not value.id:
             raise AttributeError(f"{value} has no id")
@@ -127,5 +127,5 @@ def deserialize(value_type: type[Any], value: RedisValue) -> Any:
     if issubclass(value_type, IModel):
         return value_type.get(value)  # type: ignore[arg-type]
     if value_type is bool and isinstance(value, bytes):
-        return bool.from_bytes(value, "little")
+        return bool(int(value))
     raise TypeError(f"Cannot deserialize {value!r} to type {value_type}")
