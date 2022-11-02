@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import typing
 from abc import ABCMeta, abstractmethod
 from collections import UserList
 from typing import (
@@ -20,11 +21,12 @@ from typing import (
     cast,
 )
 
-from redis.asyncio.client import Pipeline, Redis
+from aio_rom.fields import deserialize, serialize
+from aio_rom.session import connection, transaction
+from aio_rom.types import IModel, Key, RedisValue, Serializable
 
-from .fields import deserialize, serialize
-from .session import connection, transaction
-from .types import IModel, Key, RedisValue, Serializable
+if typing.TYPE_CHECKING:
+    from redis.asyncio.client import Pipeline, Redis
 
 T = TypeVar("T", bound=Serializable)
 

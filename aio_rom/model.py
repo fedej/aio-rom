@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import typing
 from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeVar
 
-from .exception import ModelNotFoundException
-from .fields import deserialize, fields, serialize
-from .session import connection, transaction
-from .types import IModel
-
-if typing.TYPE_CHECKING:
-    from .types import Key, RedisValue
+from aio_rom.exception import ModelNotFoundException
+from aio_rom.fields import deserialize, fields, serialize
+from aio_rom.session import connection, transaction
+from aio_rom.types import IModel, Key, RedisValue
 
 _logger = logging.getLogger(__name__)
 

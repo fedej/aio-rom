@@ -5,9 +5,10 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from redis.asyncio import Redis
-from redis.asyncio.client import Pipeline
 
 if TYPE_CHECKING:
+    from redis.asyncio.client import Pipeline
+
     from aio_rom.types import Key
 
 REDIS_CLIENT: ContextVar[Redis[str] | None] = ContextVar("redis_client", default=None)

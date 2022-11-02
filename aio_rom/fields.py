@@ -5,8 +5,8 @@ from typing import Any, ClassVar, TypeVar
 
 from typing_extensions import get_args, get_origin, get_type_hints
 
-from .types import IModel, RedisValue, Serializable
-from .utils import type_dispatch
+from aio_rom.types import IModel, RedisValue, Serializable
+from aio_rom.utils import type_dispatch
 
 T = TypeVar("T")
 
