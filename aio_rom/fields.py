@@ -126,6 +126,6 @@ def deserialize(value_type: type[Any], value: RedisValue) -> Any:
         return value_type(value)
     if issubclass(value_type, IModel):
         return value_type.get(value)  # type: ignore[arg-type]
-    if value_type is bool and isinstance(value, bytes):
+    if issubclass(value_type, bool):
         return bool(int(value))
     raise TypeError(f"Cannot deserialize {value!r} to type {value_type}")
