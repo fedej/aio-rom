@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import typing
@@ -8,22 +9,31 @@ from dataclasses import field
 
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
+from redis.asyncio.client import Redis
 from typing_extensions import Annotated
 
 from aio_rom import DataclassModel as Model
+from aio_rom import Model as PlainModel
 from aio_rom.collections import RedisList
 from aio_rom.fields import Metadata
-from aio_rom.session import connection
+from aio_rom.session import CONNECTION
 
 if not os.environ.get("CI"):
     pytest.skip("Redis benchmark CI test only", allow_module_level=True)
 
 
-@dataclasses.dataclass
-class Bar(Model):
+class Bar(PlainModel):
+    __slots__ = "field1", "field2", "field3"
+
     field1: int
     field2: str
     field3: RedisList[int]
+
+    def __init__(self, id: str, field1: int, field2: str, field3: RedisList[int]):
+        self.id = id
+        self.field1 = field1
+        self.field2 = field2
+        self.field3 = field3
 
 
 @dataclasses.dataclass
@@ -44,7 +54,8 @@ def run_benchmark(
     def run() -> None:
         event_loop.run_until_complete(coro())
 
-    benchmark(run)
+    with connection(event_loop):
+        benchmark(run)
 
 
 @pytest.fixture
@@ -65,48 +76,65 @@ async def item_list() -> typing.AsyncIterator[None]:
     yield
     await Bar.delete_all()
     await Foo.delete_all()
+    await RedisList.delete_all()
+
+
+@contextlib.contextmanager
+def connection(
+    event_loop: asyncio.AbstractEventLoop,
+) -> typing.Iterator[None]:
+    client: Redis[str] = event_loop.run_until_complete(
+        Redis.from_url(
+            "redis://localhost",
+            encoding="utf-8",
+            decode_responses=True,
+        ).__aenter__()
+    )
+    t = CONNECTION.set(event_loop.run_until_complete(client.client().__aenter__()))
+    yield
+    CONNECTION.reset(t)
+    event_loop.run_until_complete(client.close(close_connection_pool=True))
 
 
 @pytest.mark.benchmark
-def test_save(
-    item: Bar, event_loop: asyncio.AbstractEventLoop, benchmark: BenchmarkFixture
+def test_save_new(
+    event_loop: asyncio.AbstractEventLoop, benchmark: BenchmarkFixture
 ) -> None:
+    item = Bar("1", 123, "value", RedisList[int]([1, 2, 3]))
+
     async def do() -> None:
-        async with connection():
-            for _ in range(ITEMS):
-                await item.save()
+        for _ in range(ITEMS):
+            await item.save()
 
     run_benchmark(benchmark, do, event_loop)
 
 
 @pytest.mark.benchmark
-def test_get(
+def test_get_new(
     item: Bar, event_loop: asyncio.AbstractEventLoop, benchmark: BenchmarkFixture
 ) -> None:
     async def do() -> None:
-        async with connection():
-            for _ in range(ITEMS):
-                await Bar.get("1")
+        for _ in range(ITEMS):
+            await Bar.get("1")
 
     run_benchmark(benchmark, do, event_loop)
 
 
 @pytest.mark.benchmark
-def test_get_eager_list(
+def test_get_eager_list_new(
     item_list: typing.Any,
     event_loop: asyncio.AbstractEventLoop,
     benchmark: BenchmarkFixture,
 ) -> None:
     async def do() -> None:
-        async with connection():
-            foo = await Foo.get("1")
+        foo = await Foo.get("1")
         assert len(foo.bars) == ITEMS
 
     run_benchmark(benchmark, do, event_loop)
 
 
 @pytest.mark.benchmark
-def test_get_all(
+def test_get_all_new(
     item_list: typing.Any,
     benchmark: BenchmarkFixture,
     event_loop: asyncio.AbstractEventLoop,
@@ -119,7 +147,7 @@ def test_get_all(
 
 
 @pytest.mark.benchmark
-def test_scan_all(
+def test_scan_all_new(
     item_list: typing.Any,
     benchmark: BenchmarkFixture,
     event_loop: asyncio.AbstractEventLoop,
@@ -132,7 +160,7 @@ def test_scan_all(
 
 
 @pytest.mark.benchmark
-def test_cascade_save(
+def test_cascade_save_new(
     benchmark: BenchmarkFixture, event_loop: asyncio.AbstractEventLoop
 ) -> None:
     async def do() -> None:
