@@ -18,7 +18,7 @@ from typing import (
     TypeVar,
 )
 
-from aioredis.client import Pipeline, Redis
+from redis.asyncio.client import Pipeline, Redis
 
 from .fields import deserialize, serialize
 from .session import connection, transaction
@@ -82,7 +82,7 @@ class RedisCollection(
     @abstractmethod
     async def save_redis_values(
         self,
-        tr: Pipeline,
+        tr: Pipeline[str],
         values: Collection[Any],
     ) -> None:
         pass
@@ -122,7 +122,7 @@ class RedisCollection(
             )
 
     @abstractmethod
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         pass
 
     async def delete(self, cascade: bool = False) -> None:
@@ -162,11 +162,11 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
             self, set(values) if values else set()
         )
 
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         return set(await redis.smembers(self.db_id()))
 
     async def save_redis_values(
-        self, tr: Pipeline, values: Collection[RedisValue]
+        self, tr: Pipeline[str], values: Collection[RedisValue]
     ) -> None:
         await tr.sadd(self.db_id(), *values)
 
@@ -213,7 +213,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
     def values(self, values: Collection[T] | None) -> None:
         self.data = list(values) if values else []
 
-    async def get_redis_values(self, redis: Redis) -> Collection[RedisValue]:
+    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
         return list(await redis.lrange(self.db_id(), 0, -1))
 
     async def total_count(self) -> int:
@@ -221,7 +221,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
             return int(await conn.llen(self.db_id()))
 
     async def save_redis_values(
-        self, tr: Pipeline, values: Collection[RedisValue]
+        self, tr: Pipeline[str], values: Collection[RedisValue]
     ) -> None:
         await tr.rpush(self.db_id(), *values)
 

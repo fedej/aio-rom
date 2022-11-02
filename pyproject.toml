@@ -26,10 +26,10 @@ include = ["aio_rom/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aioredis = "2.0.1"
 typing-extensions = ">=4.4.0,<5.0"
+redis = "^4.3.4"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 black = "^22.10.0"
 flake8 = "^5.0.4"
 mypy = "^0.982"
