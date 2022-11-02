@@ -78,7 +78,7 @@ async def test_save(bar: Bar) -> None:
     assert "bar:1:field3" == field3
     assert ["1", "2", "3"] == field3_value
     assert "3" == field4
-    assert "\x01" == field5
+    assert "1" == field5
     assert field6 is None
 
 
