@@ -2,23 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    AsyncIterator,
-    Awaitable,
-    ClassVar,
-    Mapping,
-    Type,
-    TypeVar,
-)
+import typing
+from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeVar
 
 from .exception import ModelNotFoundException
 from .fields import deserialize, fields, serialize
 from .session import connection, transaction
 from .types import IModel
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from .types import Key, RedisValue
 
 _logger = logging.getLogger(__name__)

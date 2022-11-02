@@ -82,5 +82,7 @@ async def transaction(*watches: Key) -> AsyncIterator[Pipeline[str]]:
         try:
             yield tr
         finally:
-            TRANSACTION.reset(t)
-            await tr.execute()
+            try:
+                await tr.execute()
+            finally:
+                TRANSACTION.reset(t)
