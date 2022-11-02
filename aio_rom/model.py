@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import typing
 from operator import attrgetter
-from typing import Any, AsyncIterator, Awaitable, ClassVar, Type, TypeVar
+from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeVar
 
 from .exception import ModelNotFoundException
 from .fields import Field, deserialize, fields, serialize_dict
 from .session import connection, transaction
-from .types import IModel, Key, RedisValue
+from .types import IModel
+
+if typing.TYPE_CHECKING:
+    from .types import Key, RedisValue
 
 _logger = logging.getLogger(__name__)
 
@@ -22,7 +26,7 @@ class Model(IModel):
     async def get(cls: type[M], id: Key) -> M:
         key = f"{cls.prefix()}:{str(id)}"
         async with connection() as conn:
-            db_item: dict[str, RedisValue] = await conn.hgetall(key)
+            db_item: Mapping[str, RedisValue] = await conn.hgetall(key)
 
         if not db_item:
             raise cls.NotFoundException(f"{key} not found")
@@ -106,7 +110,7 @@ class Model(IModel):
                 operations.append(
                     tr.hset(
                         self.db_id(),
-                        mapping=update_mapping,
+                        mapping=update_mapping,  # type: ignore[arg-type]
                     )
                 )
             if operations:

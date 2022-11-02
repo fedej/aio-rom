@@ -4,15 +4,15 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
 
 if TYPE_CHECKING:
     from aio_rom.types import Key
 
-POOL: ContextVar[ConnectionPool | None] = ContextVar("pool", default=None)
-CONNECTION: ContextVar[Redis | None] = ContextVar("connection", default=None)
-TRANSACTION: ContextVar[Pipeline | None] = ContextVar("transaction", default=None)
+REDIS_CLIENT: ContextVar[Redis[str] | None] = ContextVar("redis_client", default=None)
+CONNECTION: ContextVar[Redis[str] | None] = ContextVar("connection", default=None)
+TRANSACTION: ContextVar[Pipeline[str] | None] = ContextVar("transaction", default=None)
 
 config: dict[str, Any] = {}
 
@@ -25,61 +25,64 @@ def configure(address: str | None = None, *args: Any, **kwargs: Any) -> None:
 
 
 @asynccontextmanager
-async def redis_pool(
+async def redis_client(
     address: str | None = None, **kwargs: Any
-) -> AsyncIterator[ConnectionPool]:
-    pool = POOL.get()
-    if pool:
-        yield pool
+) -> AsyncIterator[Redis[str]]:
+    client: Redis[str] | None = REDIS_CLIENT.get()
+    if client:
+        yield client
         return
-    pool = ConnectionPool.from_url(
+    client = Redis.from_url(
         address if address else config.get("address", "redis://localhost"),
         encoding="utf-8",
         decode_responses=True,
         **kwargs if kwargs else config.get("kwargs", {}),
     )
-    t = POOL.set(pool)
+    if not client:
+        raise ValueError("Failed to initialize Redis client")
+    t = REDIS_CLIENT.set(client)
     try:
-        yield pool
+        yield client
     finally:
-        await pool.disconnect()
-        POOL.reset(t)
+        await client.close()
+        REDIS_CLIENT.reset(t)
 
 
 @asynccontextmanager
-async def connection(address: str | None = None, **kwargs: Any) -> AsyncIterator[Redis]:
+async def connection(
+    address: str | None = None, **kwargs: Any
+) -> AsyncIterator[Redis[str]]:
     connection = CONNECTION.get()
     if connection:
         yield connection
         return
 
-    async with redis_pool(address, **kwargs) as pool:
-        async with Redis(single_connection_client=True, connection_pool=pool) as redis:
-            t = CONNECTION.set(redis)
-            try:
-                yield redis
-            finally:
-                CONNECTION.reset(t)
+    async with redis_client(address, **kwargs) as pool:
+        redis = await pool.client()
+        t = CONNECTION.set(redis)
+        try:
+            yield redis
+        finally:
+            CONNECTION.reset(t)
+            await redis.close(close_connection_pool=True)
 
 
 @asynccontextmanager
-async def transaction(*watches: Key) -> AsyncIterator[Pipeline]:
+async def transaction(*watches: Key) -> AsyncIterator[Pipeline[str]]:
     transaction = TRANSACTION.get()
     if transaction:
         yield transaction
         return
 
-    async with connection() as conn:
-        async with conn.pipeline() as tr:
-            keys = [str(key) if isinstance(key, int) else key for key in watches]
-            if keys:
-                await tr.watch(*keys)
-            tr.multi()  # type: ignore[no-untyped-call]
-            t = TRANSACTION.set(tr)
+    async with connection() as conn, conn.pipeline(transaction=True) as tr:
+        if watches:
+            await tr.watch(*watches)
+        tr.multi()
+        t = TRANSACTION.set(tr)
+        try:
+            yield tr
+        finally:
             try:
-                yield tr
+                await tr.execute()
             finally:
-                try:
-                    await tr.execute()
-                finally:
-                    TRANSACTION.reset(t)
+                TRANSACTION.reset(t)

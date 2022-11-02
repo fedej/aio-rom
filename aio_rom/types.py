@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
-from redis.typing import FieldT as RedisValue
-from redis.typing import KeyT as Key
+from redis.typing import FieldT, KeyT
+from typing_extensions import TypeAlias
 
 from aio_rom.exception import ModelNotFoundException
 from aio_rom.session import connection
@@ -64,5 +64,9 @@ class IModel(ABC):
         ...
 
 
+Key: TypeAlias = KeyT
+RedisValue: TypeAlias = FieldT
 Serializable = Union[RedisValue, IModel]
 Serialized = Optional[RedisValue]
+
+__all__ = ["IModel", "Key", "RedisValue", "Serializable", "Serialized"]
