@@ -18,7 +18,7 @@ from typing import (
     TypeVar,
 )
 
-from aioredis.client import Pipeline, Redis
+from redis.asyncio.client import Pipeline, Redis
 
 from .fields import deserialize, serialize
 from .session import connection, transaction

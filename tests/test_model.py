@@ -4,8 +4,7 @@ from dataclasses import field
 from typing import Optional
 
 import pytest
-from aioredis import Redis
-from aioredis.client import Pipeline
+from redis.asyncio.client import Pipeline, Redis
 
 from aio_rom import DataclassModel as Model
 from aio_rom.collections import RedisSet
