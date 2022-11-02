@@ -67,7 +67,7 @@ envlist =
     clean
     style
     mypy
-    py{37,38,39,310},pypy3
+    py{37,38,39,310,311},pypy3
 skip_missing_interpreters = true
 
 [gh-actions]
@@ -76,6 +76,7 @@ python =
     3.8: clean, py38, mypy
     3.9: clean, py39
     3.10: clean, py310
+    3.11: clean, py311
     pypy-3: clean, pypy3
 
 [testenv]
