@@ -1,7 +1,7 @@
 import dataclasses
 
-from .model import Model
-from .types import Key
+from aio_rom.model import Model
+from aio_rom.types import Key
 
 
 @dataclasses.dataclass

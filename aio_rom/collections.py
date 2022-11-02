@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import typing
 from abc import ABCMeta, abstractmethod
 from collections import UserList
 from typing import (
     Any,
     AsyncIterable,
     AsyncIterator,
+    Awaitable,
     ClassVar,
     Collection,
     Generic,
@@ -16,13 +18,15 @@ from typing import (
     MutableSet,
     Type,
     TypeVar,
+    cast,
 )
 
-from redis.asyncio.client import Pipeline, Redis
+from aio_rom.fields import deserialize, serialize
+from aio_rom.session import connection, transaction
+from aio_rom.types import IModel, Key, RedisValue, Serializable
 
-from .fields import deserialize, serialize
-from .session import connection, transaction
-from .types import IModel, Key, RedisValue, Serializable
+if typing.TYPE_CHECKING:
+    from redis.asyncio.client import Pipeline, Redis
 
 T = TypeVar("T", bound=Serializable)
 
@@ -46,7 +50,10 @@ class GenericCollection:
 
         cls_dict = dict(cls.__dict__)
         cls_dict["item_class"] = params[0]
+        slots = cls_dict.pop("__slots__", None)
         generic_collection = type(cls.__name__, (cls,), cls_dict)
+        if slots:
+            generic_collection.__slots__ = slots  # type: ignore[attr-defined]
         _generic_types_cache[(cls, params[0])] = generic_collection
         return generic_collection
 
@@ -60,6 +67,8 @@ class RedisCollection(
     Iterable[T],
     metaclass=ABCMeta,
 ):
+    __slots__ = ("_values",)
+
     item_class: ClassVar[type]
 
     def __init__(self, values: Collection[T] | None = None, id: Key | None = None):
@@ -101,11 +110,11 @@ class RedisCollection(
             await tr.sadd(self.prefix(), self.id)
             if cascade:
                 await asyncio.gather(
-                    *[
+                    *(
                         v.save(optimistic=optimistic)
                         for v in self.values
                         if isinstance(v, IModel)
-                    ]
+                    )
                 )
 
     @classmethod
@@ -114,12 +123,15 @@ class RedisCollection(
 
     async def refresh(self) -> None:
         async with connection() as redis:
-            self.values = await asyncio.gather(
-                *[
-                    deserialize(self.item_class, value)
-                    for value in await self.get_redis_values(redis)
-                ]
-            )
+            self.values = [
+                deserialize(self.item_class, value)
+                for value in await self.get_redis_values(redis)
+            ]
+
+            if issubclass(self.item_class, IModel):
+                self.values = await asyncio.gather(
+                    *cast(List[Awaitable[IModel]], self.values)
+                )
 
     @abstractmethod
     async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
@@ -193,7 +205,9 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
     async def __aiter__(self) -> AsyncIterator[T]:
         async with connection() as conn:
             async for value in conn.sscan_iter(self.db_id()):
-                item = await deserialize(self.item_class, value)
+                item = deserialize(self.item_class, value)
+                if issubclass(self.item_class, IModel):
+                    item = await item
                 self.add(item)
                 yield item
 
@@ -238,6 +252,8 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
         async with connection() as conn:
             for index in range(0, await conn.llen(self.db_id())):
                 value = await conn.lindex(self.db_id(), index)
-                item = await deserialize(self.item_class, value)
+                item = deserialize(self.item_class, value)
+                if issubclass(self.item_class, IModel):
+                    item = await item
                 self.insert(index, item)
                 yield item

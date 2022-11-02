@@ -36,6 +36,7 @@ mypy = "^0.982"
 pytest = "^7.2.0"
 pytest-asyncio = "^0.20.1"
 pytest-benchmark = "^4.0.0"
+pytest-profiling = "^1.7.0"
 isort = "^5.10.1"
 bandit = "^1.7.4"
 flake8-bugbear = "^22.10.27"
@@ -86,8 +87,6 @@ deps =
     pytest-cov
     pytest-benchmark
 passenv = CI
-extras = mypy
-setenv = MYPY_TEST_PREFIX = tests
 commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
 
 [testenv:pypy3]

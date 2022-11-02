@@ -13,6 +13,8 @@ T = TypeVar("T", bound="IModel")
 
 
 class IModel(ABC):
+    __slots__ = ("id",)
+
     NotFoundException: ClassVar[Type[ModelNotFoundException]]
     id: Key
 

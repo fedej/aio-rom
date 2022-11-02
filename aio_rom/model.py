@@ -2,17 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import typing
-from operator import attrgetter
 from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeVar
 
-from .exception import ModelNotFoundException
-from .fields import Field, deserialize, fields, serialize_dict
-from .session import connection, transaction
-from .types import IModel
-
-if typing.TYPE_CHECKING:
-    from .types import Key, RedisValue
+from aio_rom.exception import ModelNotFoundException
+from aio_rom.fields import deserialize, fields, serialize
+from aio_rom.session import connection, transaction
+from aio_rom.types import IModel, Key, RedisValue
 
 _logger = logging.getLogger(__name__)
 
@@ -31,34 +26,25 @@ class Model(IModel):
         if not db_item:
             raise cls.NotFoundException(f"{key} not found")
 
-        model_fields = [
-            f for field_name, f in fields(cls).items() if field_name in db_item
-        ]
+        deserialized = {}
+        for f in [f for f in fields(cls).values() if f.name in db_item]:
+            value = deserialize(f.field_type, db_item[f.name])
+            if asyncio.iscoroutine(value):
+                value = await value
+                if f.eager:
+                    await value.refresh()
+            deserialized[f.name] = value
 
-        async def deserialize_field(field: Field, value: RedisValue) -> Any:
-            value = await deserialize(field.type, value)
-            if isinstance(value, IModel) and field.eager:
-                await value.refresh()
-            return value
-
-        deserialized = await asyncio.gather(
-            *(deserialize_field(f, db_item[f.name]) for f in model_fields)
-        )
-
-        return cls(**dict(zip(map(attrgetter("name"), model_fields), deserialized)))
+        return cls(**deserialized)
 
     @classmethod
     async def scan(cls: type[M], **kwargs: str | None | int | None) -> AsyncIterator[M]:
         async with connection() as conn:
-            found = set()
             async for key in conn.sscan_iter(cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
-                if key not in found:
-                    value = await cls.get(key)
-                    if value:
-                        yield value
-                        found.add(key)
-                    else:
-                        _logger.warning(f"{cls.__name__} Key: {key} orphaned")
+                try:
+                    yield await cls.get(key)
+                except cls.NotFoundException:
+                    _logger.warning(f"{cls.__name__} Key: {key} orphaned")
 
     @classmethod
     async def all(cls: type[M]) -> list[M]:
@@ -80,32 +66,30 @@ class Model(IModel):
     async def update(self, optimistic: bool = False, **changes: Any) -> None:
         model_fields = fields(self)
         for name, value in changes.items():
-            setattr(self, name, value)
+            if name in model_fields:
+                setattr(self, name, value)
 
-        values = {
-            field_name: getattr(self, field_name)
+        values = [
+            (field_name, getattr(self, field_name))
             for field_name, f in model_fields.items()
             if (not changes or field_name in changes)
-        }
+        ]
 
-        model_dict = serialize_dict(
-            {
-                k: v
-                for k, v in values.items()
-                if not (model_fields[k].optional and v is None)
-            }
-        )
-        watch = [self.db_id()] if optimistic else []
+        model_dict = {
+            k: serialize(v)
+            for k, v in values
+            if not (model_fields[k].optional and v is None)
+        }
         operations: list[Awaitable[None]] = [
             value.save(optimistic=optimistic, cascade=model_fields[field_name].cascade)
-            for field_name, value in values.items()
+            for field_name, value in values
             if isinstance(value, IModel)
         ]
         keys_to_delete = [k for k, v in model_dict.items() if v is None]
-        async with transaction(*watch) as tr:
+        update_mapping = {k: v for k, v in model_dict.items() if v is not None}
+        async with transaction(*([self.db_id()] if optimistic else [])) as tr:
             if keys_to_delete:
                 operations.append(tr.hdel(self.db_id(), *keys_to_delete))
-            update_mapping = {k: v for k, v in model_dict.items() if v is not None}
             if update_mapping:
                 operations.append(
                     tr.hset(
@@ -131,7 +115,6 @@ class Model(IModel):
                 setattr(self, name, getattr(fresh, name))
 
     def __setattr__(self, key: str, value: Any) -> None:
-        model_fields = fields(self)
         if isinstance(value, IModel) and not value.id:
-            value.id = f"{self.db_id()}:{model_fields[key].name}"
+            value.id = f"{self.db_id()}:{key}"
         super().__setattr__(key, value)
