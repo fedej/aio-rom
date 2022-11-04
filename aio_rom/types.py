@@ -62,7 +62,7 @@ class IModel(ABC):
             return bool(await conn.exists(self.db_id()))
 
     @abstractmethod
-    async def refresh(self: T) -> None:
+    async def refresh(self) -> None:
         ...
 
 

@@ -5,6 +5,7 @@ from typing import Any, ClassVar, TypeVar
 
 from typing_extensions import get_args, get_origin, get_type_hints
 
+from aio_rom.proxy import ProxyModel
 from aio_rom.types import IModel, RedisValue, Serializable
 from aio_rom.utils import type_dispatch
 
@@ -125,7 +126,7 @@ def deserialize(value_type: type[Any], value: RedisValue) -> Any:
     if issubclass(value_type, (int, float)):
         return value_type(value)
     if issubclass(value_type, IModel):
-        return value_type.get(value)  # type: ignore[arg-type]
+        return ProxyModel(value_type, value)  # type: ignore[arg-type]
     if issubclass(value_type, bool):
         return bool(int(value))
     raise TypeError(f"Cannot deserialize {value!r} to type {value_type}")

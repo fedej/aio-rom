@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeV
 
 from aio_rom.exception import ModelNotFoundException
 from aio_rom.fields import deserialize, fields, serialize
+from aio_rom.proxy import ProxyModel
 from aio_rom.session import connection, transaction
 from aio_rom.types import IModel, Key, RedisValue
 
@@ -29,10 +30,11 @@ class Model(IModel):
         deserialized = {}
         for f in [f for f in fields(cls).values() if f.name in db_item]:
             value = deserialize(f.field_type, db_item[f.name])
-            if asyncio.iscoroutine(value):
-                value = await value
-                if f.eager:
-                    await value.refresh()
+            if f.eager and isinstance(value, IModel):
+                await value.refresh()
+                if isinstance(value, ProxyModel):
+                    # unwrap the proxied model when the field is eager
+                    value = value.proxied
             deserialized[f.name] = value
 
         return cls(**deserialized)
@@ -40,7 +42,9 @@ class Model(IModel):
     @classmethod
     async def scan(cls: type[M], **kwargs: str | None | int | None) -> AsyncIterator[M]:
         async with connection() as conn:
-            async for key in conn.sscan_iter(cls.prefix(), **kwargs):  # type: ignore[arg-type] # noqa
+            async for key in conn.sscan_iter(
+                cls.prefix(), **kwargs  # type: ignore[arg-type]
+            ):
                 try:
                     yield await cls.get(key)
                 except cls.NotFoundException:
