@@ -10,7 +10,6 @@ from typing_extensions import Annotated
 from aio_rom import DataclassModel as Model
 from aio_rom.collections import RedisList, RedisSet
 from aio_rom.fields import Metadata
-from aio_rom.proxy import ProxyModel
 from aio_rom.session import connection
 
 if not os.environ.get("CI"):
@@ -111,7 +110,7 @@ async def test_get_with_references(bar: Bar) -> None:
     await foo.save()
     gotten_foo = await Foo.get("123")
     assert foo == gotten_foo
-    assert isinstance(gotten_foo.lazy_bars, ProxyModel)
+    assert isinstance(gotten_foo.lazy_bars, RedisSet)
     await gotten_foo.lazy_bars.refresh()
     assert 1 == await gotten_foo.lazy_bars.total_count()
     for bar in gotten_foo.lazy_bars:

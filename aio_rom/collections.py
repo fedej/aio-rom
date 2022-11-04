@@ -227,8 +227,8 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
         async with connection() as conn:
             async for value in conn.sscan_iter(self.db_id()):
                 item = deserialize(self.item_class, value)
-                if issubclass(self.item_class, IModel):
-                    item = await item
+                if isinstance(item, ProxyModel):
+                    item = await get_proxied_value(item)
                 self.add(item)
                 yield item
 
@@ -277,7 +277,7 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
             for index in range(0, await conn.llen(self.db_id())):
                 value = await conn.lindex(self.db_id(), index)
                 item = deserialize(self.item_class, value)
-                if issubclass(self.item_class, IModel):
-                    item = await item
-                self.insert(index, item)
+                if isinstance(item, ProxyModel):
+                    item = await get_proxied_value(item)
+                self[index] = item
                 yield item
