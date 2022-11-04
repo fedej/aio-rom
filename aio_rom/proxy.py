@@ -31,6 +31,9 @@ class ProxyModel(IModel, typing.Generic[T]):
     async def refresh(self) -> None:
         self.proxied = await self.proxied_type.get(self.id)
 
+    def __iter__(self):
+        return iter(self.proxied)
+
     def __getattr__(self, item):
         if not self.proxied:
             raise ValueError("You must call `refresh()` before you can use this proxy")
