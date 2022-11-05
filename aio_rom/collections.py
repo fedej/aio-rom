@@ -60,9 +60,9 @@ class GenericCollection:
 
 async def get_proxied_value(model: ProxyModel[M]) -> M:
     await model.refresh()
-    if not model.proxied:
+    if not model.__wrapped__:
         raise ValueError("Missing proxied value")
-    return model.proxied
+    return model.__wrapped__
 
 
 class RedisCollection(

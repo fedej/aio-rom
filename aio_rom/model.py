@@ -34,7 +34,7 @@ class Model(IModel):
                 await value.refresh()
                 if isinstance(value, ProxyModel):
                     # unwrap the proxied model when the field is eager
-                    value = value.proxied
+                    value = value.__wrapped__
             deserialized[f.name] = value
 
         return cls(**deserialized)
