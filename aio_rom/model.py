@@ -6,7 +6,6 @@ from typing import Any, AsyncIterator, Awaitable, ClassVar, Mapping, Type, TypeV
 
 from aio_rom.exception import ModelNotFoundException
 from aio_rom.fields import deserialize, fields, serialize
-from aio_rom.proxy import ProxyModel
 from aio_rom.session import connection, transaction
 from aio_rom.types import IModel, Key, RedisValue
 
@@ -32,9 +31,7 @@ class Model(IModel):
             value = deserialize(f.field_type, db_item[f.name])
             if f.eager and isinstance(value, IModel):
                 await value.refresh()
-                if isinstance(value, ProxyModel):
-                    # unwrap the proxied model when the field is eager
-                    value = value.__wrapped__
+                value = getattr(value, "__wrapped__", value)
             deserialized[f.name] = value
 
         return cls(**deserialized)

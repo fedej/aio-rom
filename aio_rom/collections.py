@@ -20,7 +20,6 @@ from typing import (
 )
 
 from aio_rom.fields import deserialize, serialize
-from aio_rom.proxy import ProxyModel
 from aio_rom.session import connection, transaction
 from aio_rom.types import IModel, Key, RedisValue, Serializable
 
@@ -56,13 +55,6 @@ class GenericCollection:
             generic_collection.__slots__ = slots  # type: ignore[attr-defined]
         _generic_types_cache[(cls, params[0])] = generic_collection
         return generic_collection
-
-
-async def get_proxied_value(model: ProxyModel[M]) -> M:
-    await model.refresh()
-    if not model.__wrapped__:
-        raise ValueError("Missing proxied value")
-    return model.__wrapped__
 
 
 class RedisCollection(
@@ -128,19 +120,12 @@ class RedisCollection(
     async def get(cls: Type[RedisCollection[T]], id: Key) -> RedisCollection[T]:
         async with connection() as redis:
             values = []
-            models_to_refresh = []
             for value in await cls.get_redis_values(redis, f"{cls.prefix()}:{str(id)}"):
                 deserialized = deserialize(cls.item_class, value)
-                if isinstance(deserialized, ProxyModel):
-                    models_to_refresh.append(deserialized)
-                else:
-                    values.append(deserialized)
-
-            values.extend(
-                await asyncio.gather(
-                    *[get_proxied_value(model) for model in models_to_refresh]
-                )
-            )
+                if isinstance(deserialized, IModel):
+                    await deserialized.refresh()
+                    deserialized = getattr(deserialized, "__wrapped__", deserialized)
+                values.append(deserialized)
 
         return cls(id=id, values=values)
 
@@ -227,8 +212,9 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
         async with connection() as conn:
             async for value in conn.sscan_iter(self.db_id()):
                 item = deserialize(self.item_class, value)
-                if isinstance(item, ProxyModel):
-                    item = await get_proxied_value(item)
+                if isinstance(item, IModel):
+                    await item.refresh()
+                    item = getattr(item, "__wrapped__", item)
                 self.add(item)
                 yield item
 
@@ -277,7 +263,8 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
             for index in range(0, await conn.llen(self.db_id())):
                 value = await conn.lindex(self.db_id(), index)
                 item = deserialize(self.item_class, value)
-                if isinstance(item, ProxyModel):
-                    item = await get_proxied_value(item)
+                if isinstance(item, IModel):
+                    await item.refresh()
+                    item = getattr(item, "__wrapped__", item)
                 self[index] = item
                 yield item
