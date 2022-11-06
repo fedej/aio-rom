@@ -91,6 +91,7 @@ commands = pytest
 deps =
     pytest
     pytest-asyncio
+    pytest-benchmark
     pytest-cov
 passenv = CI
 commands = {[testenv]commands} --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
