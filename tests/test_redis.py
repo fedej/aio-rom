@@ -111,8 +111,8 @@ async def test_get_with_references(bar: Bar) -> None:
     gotten_foo = await Foo.get("123")
     assert foo == gotten_foo
     assert isinstance(gotten_foo.lazy_bars, RedisSet)
-    assert 1 == await gotten_foo.lazy_bars.total_count()
     await gotten_foo.lazy_bars.refresh()
+    assert 1 == await gotten_foo.lazy_bars.total_count()
     for bar in gotten_foo.lazy_bars:
         assert bar in foo.lazy_bars
     assert len(foo.lazy_bars) == len(gotten_foo.lazy_bars)

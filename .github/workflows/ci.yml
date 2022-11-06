@@ -35,16 +35,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox tox-gh-actions
       - name: Run Tox
-        run: CI=true tox
+        run: CI=true BENCHMARK=true tox
       - name: Upload coverage.xml
-        if: ${{ matrix.redis-version == '5' && matrix.python-version == '3.9' }}
+        if: ${{ matrix.redis-version == '6' && matrix.python-version == '3.9' }}
         uses: actions/upload-artifact@v3
         with:
           name: rom-coverage
           path: coverage.xml
           if-no-files-found: error
       - name: Codecov
-        if: ${{ matrix.redis-version == '5' && matrix.python-version == '3.9' }}
+        if: ${{ matrix.redis-version == '6' && matrix.python-version == '3.9' }}
         uses: codecov/codecov-action@v3.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

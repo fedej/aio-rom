@@ -18,7 +18,7 @@ from aio_rom.collections import RedisList
 from aio_rom.fields import Metadata
 from aio_rom.session import CONNECTION
 
-if not os.environ.get("CI"):
+if not os.environ.get("CI") and not os.environ.get("BENCHMARK"):
     pytest.skip("Redis benchmark CI test only", allow_module_level=True)
 
 
@@ -97,7 +97,7 @@ def connection(
 
 
 @pytest.mark.benchmark
-def test_save_new(
+def test_save(
     event_loop: asyncio.AbstractEventLoop, benchmark: BenchmarkFixture
 ) -> None:
     item = Bar("1", 123, "value", RedisList[int]([1, 2, 3]))
@@ -110,7 +110,7 @@ def test_save_new(
 
 
 @pytest.mark.benchmark
-def test_get_new(
+def test_get(
     item: Bar, event_loop: asyncio.AbstractEventLoop, benchmark: BenchmarkFixture
 ) -> None:
     async def do() -> None:
@@ -121,7 +121,7 @@ def test_get_new(
 
 
 @pytest.mark.benchmark
-def test_get_eager_list_new(
+def test_get_eager_list(
     item_list: typing.Any,
     event_loop: asyncio.AbstractEventLoop,
     benchmark: BenchmarkFixture,
@@ -134,7 +134,7 @@ def test_get_eager_list_new(
 
 
 @pytest.mark.benchmark
-def test_get_all_new(
+def test_get_all(
     item_list: typing.Any,
     benchmark: BenchmarkFixture,
     event_loop: asyncio.AbstractEventLoop,
@@ -147,7 +147,7 @@ def test_get_all_new(
 
 
 @pytest.mark.benchmark
-def test_scan_all_new(
+def test_scan_all(
     item_list: typing.Any,
     benchmark: BenchmarkFixture,
     event_loop: asyncio.AbstractEventLoop,
@@ -160,7 +160,7 @@ def test_scan_all_new(
 
 
 @pytest.mark.benchmark
-def test_cascade_save_new(
+def test_cascade_save(
     benchmark: BenchmarkFixture, event_loop: asyncio.AbstractEventLoop
 ) -> None:
     async def do() -> None:

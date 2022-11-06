@@ -28,6 +28,7 @@ include = ["aio_rom/py.typed"]
 python = "^3.7"
 typing-extensions = ">=4.4.0,<5.0"
 redis = "^4.3.4"
+wrapt = "^1.14.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.10.0"
@@ -67,16 +68,14 @@ envlist =
     clean
     style
     mypy
-    py{37,38,39,310,311},pypy3
+    coverage
+    py{3,py3}
 skip_missing_interpreters = true
 
 [gh-actions]
 python =
-    3.7: clean, py37, style
-    3.8: clean, py38, mypy
-    3.9: clean, py39
-    3.10: clean, py310
-    3.11: clean, py311
+    3: clean, py3
+    3.9: clean, py39, style, mypy, coverage
     pypy-3: clean, pypy3
 
 [testenv]
@@ -84,15 +83,18 @@ deps =
     asynctest; python_version < "3.8"
     pytest
     pytest-asyncio
-    pytest-cov
     pytest-benchmark
-passenv = CI
-commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+passenv = CI BENCHMARK
+commands = pytest
 
-[testenv:pypy3]
-extras =
-setenv =
-commands = {[testenv]commands} --ignore-glob='*mypy*.py'
+[testenv:coverage]
+deps =
+    pytest
+    pytest-asyncio
+    pytest-benchmark
+    pytest-cov
+passenv = CI
+commands = {[testenv]commands} --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
 
 [testenv:style]
 deps =

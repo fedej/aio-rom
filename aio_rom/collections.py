@@ -8,7 +8,6 @@ from typing import (
     Any,
     AsyncIterable,
     AsyncIterator,
-    Awaitable,
     ClassVar,
     Collection,
     Generic,
@@ -18,7 +17,6 @@ from typing import (
     MutableSet,
     Type,
     TypeVar,
-    cast,
 )
 
 from aio_rom.fields import deserialize, serialize
@@ -29,6 +27,7 @@ if typing.TYPE_CHECKING:
     from redis.asyncio.client import Pipeline, Redis
 
 T = TypeVar("T", bound=Serializable)
+M = TypeVar("M", bound=IModel)
 
 _generic_types_cache: dict[tuple[type[Any], Any | tuple[Any, ...]], type[Any]] = {}
 GenericCollectionT = TypeVar("GenericCollectionT", bound="GenericCollection")
@@ -119,22 +118,26 @@ class RedisCollection(
 
     @classmethod
     async def get(cls: Type[RedisCollection[T]], id: Key) -> RedisCollection[T]:
-        return cls(id=id)
+        async with connection() as redis:
+            values = []
+            for value in await cls.get_redis_values(redis, f"{cls.prefix()}:{str(id)}"):
+                deserialized = deserialize(cls.item_class, value)
+                if isinstance(deserialized, IModel):
+                    await deserialized.refresh()
+                    deserialized = getattr(deserialized, "__wrapped__", deserialized)
+                values.append(deserialized)
+
+        return cls(id=id, values=values)
 
     async def refresh(self) -> None:
-        async with connection() as redis:
-            self.values = [
-                deserialize(self.item_class, value)
-                for value in await self.get_redis_values(redis)
-            ]
+        fresh = await type(self).get(self.id)
+        self.values = fresh.values
 
-            if issubclass(self.item_class, IModel):
-                self.values = await asyncio.gather(
-                    *cast(List[Awaitable[IModel]], self.values)
-                )
-
+    @classmethod
     @abstractmethod
-    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
+    async def get_redis_values(
+        cls, redis: Redis[str], id: Key
+    ) -> Collection[RedisValue]:
         pass
 
     async def delete(self, cascade: bool = False) -> None:
@@ -174,8 +177,11 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
             self, set(values) if values else set()
         )
 
-    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
-        return set(await redis.smembers(self.db_id()))
+    @classmethod
+    async def get_redis_values(
+        cls, redis: Redis[str], id: Key
+    ) -> Collection[RedisValue]:
+        return set(await redis.smembers(id))
 
     async def save_redis_values(
         self, tr: Pipeline[str], values: Collection[RedisValue]
@@ -206,8 +212,9 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
         async with connection() as conn:
             async for value in conn.sscan_iter(self.db_id()):
                 item = deserialize(self.item_class, value)
-                if issubclass(self.item_class, IModel):
-                    item = await item
+                if isinstance(item, IModel):
+                    await item.refresh()
+                    item = getattr(item, "__wrapped__", item)
                 self.add(item)
                 yield item
 
@@ -227,8 +234,11 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
     def values(self, values: Collection[T] | None) -> None:
         self.data = list(values) if values else []
 
-    async def get_redis_values(self, redis: Redis[str]) -> Collection[RedisValue]:
-        return list(await redis.lrange(self.db_id(), 0, -1))
+    @classmethod
+    async def get_redis_values(
+        cls, redis: Redis[str], id: Key
+    ) -> Collection[RedisValue]:
+        return list(await redis.lrange(id, 0, -1))
 
     async def total_count(self) -> int:
         async with connection() as conn:
@@ -253,7 +263,8 @@ class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
             for index in range(0, await conn.llen(self.db_id())):
                 value = await conn.lindex(self.db_id(), index)
                 item = deserialize(self.item_class, value)
-                if issubclass(self.item_class, IModel):
-                    item = await item
-                self.insert(index, item)
+                if isinstance(item, IModel):
+                    await item.refresh()
+                    item = getattr(item, "__wrapped__", item)
+                self[index] = item
                 yield item
