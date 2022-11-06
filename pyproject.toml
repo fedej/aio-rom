@@ -68,7 +68,8 @@ envlist =
     clean
     style
     mypy
-    py{37,38,39,310,311,py3}
+    coverage
+    py{3,py3}
 skip_missing_interpreters = true
 
 [gh-actions]
