@@ -87,7 +87,7 @@ deps =
     pytest-cov
     pytest-benchmark
 passenv = CI
-commands = pytest --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+commands = pytest
 
 [testenv:pypy3]
 extras =
