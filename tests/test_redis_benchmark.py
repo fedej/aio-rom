@@ -18,7 +18,7 @@ from aio_rom.collections import RedisList
 from aio_rom.fields import Metadata
 from aio_rom.session import CONNECTION
 
-if not os.environ.get("CI"):
+if not os.environ.get("CI") and not os.environ.get("BENCHMARK"):
     pytest.skip("Redis benchmark CI test only", allow_module_level=True)
 
 
