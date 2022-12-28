@@ -27,7 +27,7 @@ include = ["aio_rom/py.typed"]
 [tool.poetry.dependencies]
 python = "^3.7"
 typing-extensions = ">=4.4.0,<5.0"
-redis = "^4.3.4"
+redis = "^4.4.0"
 wrapt = "^1.14.1"
 
 [tool.poetry.group.dev.dependencies]
@@ -84,7 +84,7 @@ deps =
     pytest
     pytest-asyncio
     pytest-benchmark
-passenv = CI BENCHMARK
+passenv = CI,BENCHMARK
 commands = pytest
 
 [testenv:coverage]
