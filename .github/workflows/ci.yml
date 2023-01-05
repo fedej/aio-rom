@@ -34,7 +34,8 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip hatch
 
-      - name: Lint
+      - if: "!startsWith(matrix.python-version, 'pypy')"
+        name: Lint
         run: hatch run lint:all
 
       - if: "!startsWith(matrix.python-version, 'pypy')"
