@@ -8,7 +8,7 @@ import typing
 from dataclasses import field
 
 import pytest
-from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
+from pytest_benchmark.fixture import BenchmarkFixture
 from redis.asyncio.client import Redis
 from typing_extensions import Annotated
 
@@ -18,7 +18,7 @@ from aio_rom.collections import RedisList
 from aio_rom.fields import Metadata
 from aio_rom.session import CONNECTION
 
-if not os.environ.get("CI") and not os.environ.get("BENCHMARK"):
+if not os.environ.get("CI") or not os.environ.get("BENCHMARK"):
     pytest.skip("Redis benchmark CI test only", allow_module_level=True)
 
 

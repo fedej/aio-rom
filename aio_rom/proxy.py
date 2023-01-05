@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-import wrapt  # type: ignore[import]
+import wrapt
 
 if typing.TYPE_CHECKING:
     from aio_rom.types import IModel, Key
@@ -18,7 +18,7 @@ class ProxyModel(wrapt.ObjectProxy):  # type: ignore[misc]
         self.proxied_type: type[T] = proxied_type
 
     @property  # type: ignore[misc]
-    def __class__(self) -> type[T]:
+    def __class__(self) -> type[T]:  # type: ignore[override]
         return self.proxied_type
 
     async def save(self, *, optimistic: bool = False, cascade: bool = False) -> None:

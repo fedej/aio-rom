@@ -1,12 +1,11 @@
-[tool.poetry]
+[project]
 name = "aio-rom"
-version = "0.1.5"
+dynamic = ["version"]
 description = "asyncio based Redis object mapper"
-authors = ["Federico Jaite <fede_654_87@hotmail.com>"]
+authors = [{ name = "fedej", email = "fede_654_87@hotmail.com" }]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "aio_rom"}]
-repository = "https://github.com/fedej/aio-rom"
+requires-python = ">=3.7"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: AsyncIO",
@@ -22,102 +21,113 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Database :: Front-Ends",
 ]
-include = ["aio_rom/py.typed"]
+dependencies = [
+    "typing-extensions>=4.4.0,<5.0",
+    "redis>=4.3.4,<4.4.0",
+    "wrapt>=1.14.1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.7"
-typing-extensions = ">=4.4.0,<5.0"
-redis = "^4.3.4"
-wrapt = "^1.14.1"
+[project.urls]
+"Source" = "https://github.com/fedej/aio-rom"
 
-[tool.poetry.group.dev.dependencies]
-black = "^22.10.0"
-flake8 = "^5.0.4"
-mypy = "^0.982"
-pytest = "^7.2.0"
-pytest-asyncio = "^0.20.1"
-pytest-benchmark = "^4.0.0"
-pytest-profiling = "^1.7.0"
-isort = "^5.10.1"
-bandit = "^1.7.4"
-flake8-bugbear = "^22.10.27"
-flake8-comprehensions = "^3.10.1"
+[project.optional-dependencies]
+dev = [
+    "bandit",
+    "black",
+    "flake8",
+    "flake8-bugbear",
+    "flake8-comprehensions",
+    "isort",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark"
+]
 
-[tool.poetry-version-plugin]
-source = "git-tag"
+[tool.hatch.version]
+source = "vcs"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [tool.isort]
 profile = "black"
 
 [tool.coverage.run]
 relative_files = true
+branch = true
+source_pkgs = ["aio_rom", "tests"]
+
+[tool.coverage.paths]
+aio_rom = ["aio_rom"]
+tests = ["tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-minversion = 3.7
-isolated_build = true
-envlist =
-    clean
-    style
-    mypy
-    coverage
-    py{3,py3}
-skip_missing_interpreters = true
+[tool.hatch.envs.default]
+dependencies = [
+    "asynctest;python_version<'3.8'",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "pytest-cov",
+]
 
-[gh-actions]
-python =
-    3: clean, py3
-    3.9: clean, py39, style, mypy, coverage
-    pypy-3: clean, pypy3
+[tool.hatch.envs.default.scripts]
+no-cov = "pytest --no-cov {args:tests}"
+cov = "pytest --cov --cov-report=term-missing --cov-config=pyproject.toml {args:tests}"
 
-[testenv]
-deps =
-    asynctest; python_version < "3.8"
-    pytest
-    pytest-asyncio
-    pytest-benchmark
-passenv = CI BENCHMARK
-commands = pytest
+[[tool.hatch.envs.test.matrix]]
+python = ["3.7", "3.8", "3.9", "3.10", "3.11", "pypy3"]
 
-[testenv:coverage]
-deps =
-    pytest
-    pytest-asyncio
-    pytest-benchmark
-    pytest-cov
-passenv = CI
-commands = {[testenv]commands} --cov=aio_rom --cov-append --cov-report=term-missing --cov-branch --cov-report=xml
+[tool.hatch.envs.coverage]
+detached = true
+dependencies = [
+    "coverage[toml]",
+    "lxml",
+]
+[tool.hatch.envs.coverage.scripts]
+combine = "coverage combine {args}"
+report-xml = "coverage xml"
 
-[testenv:style]
-deps =
-    black
-    flake8
-    flake8-bugbear
-    flake8-comprehensions
-    bandit
-    isort
-commands =
-    black --check .
-    flake8 --max-line-length=88 --ignore=E203,W503,B950 --select=E,W,F,C9,N8,B,B9,C4 .
-    bandit -r aio_rom
-    isort --check-only .
+[tool.hatch.envs.lint]
+detached = true
+dependencies = [
+    "bandit",
+    "black",
+    "flake8",
+    "flake8-bugbear",
+    "flake8-comprehensions",
+    "isort",
+    "mypy",
+    "pytest",
+]
 
-[testenv:mypy]
-deps =
-    mypy
-    pytest
-commands = mypy --install-types --non-interactive --strict aio_rom tests
-
-[testenv:clean]
-deps = coverage[toml]
-skip_install = true
-commands = coverage erase
-"""
+[tool.hatch.envs.lint.scripts]
+fmt = [
+    "black {args:.}",
+    "isort {args:.}",
+]
+style = [
+    "black --check {args:.}",
+    "isort --check-only {args:.}",
+]
+lint = [
+    "flake8 --max-line-length=88 --ignore=E203,W503,B950 --select=E,W,F,C9,N8,B,B9,C4 {args:aio_rom tests}",
+    "bandit -r {args:aio_rom}",
+]
+typing = "mypy --install-types --ignore-missing-imports --non-interactive --strict {args:.}"
+all = [
+    "style",
+    "lint",
+    "typing"
+]
