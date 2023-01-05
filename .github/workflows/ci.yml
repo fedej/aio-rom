@@ -40,7 +40,7 @@ jobs:
       - if: "!startsWith(matrix.python-version, 'pypy')"
         name: Run tests with coverage
         run: |
-          hatch run test:cov
+          CI=true BENCHMARK=true hatch run test:cov
           mv .coverage ".coverage.${{ matrix.os }}.${{ matrix.python-version }}"
 
       - if: "!startsWith(matrix.python-version, 'pypy')"
@@ -52,7 +52,7 @@ jobs:
 
       - if: "startsWith(matrix.python-version, 'pypy')"
         name: Run tests without coverage
-        run: hatch run test:no-cov
+        run: CI=true BENCHMARK=true hatch run test:no-cov
 
   coverage:
     name: Report coverage
