@@ -110,6 +110,7 @@ dependencies = [
     "isort",
     "mypy",
     "pytest",
+    "asynctest;python_version<'3.8'",
 ]
 
 [tool.hatch.envs.lint.scripts]
