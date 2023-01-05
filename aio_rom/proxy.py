@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 
-import wrapt  # type: ignore[import]
+import wrapt
 
 if typing.TYPE_CHECKING:
     from aio_rom.types import IModel, Key

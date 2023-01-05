@@ -8,7 +8,7 @@ import typing
 from dataclasses import field
 
 import pytest
-from pytest_benchmark.fixture import BenchmarkFixture  # type: ignore[import]
+from pytest_benchmark.fixture import BenchmarkFixture
 from redis.asyncio.client import Redis
 from typing_extensions import Annotated
 

@@ -110,7 +110,6 @@ dependencies = [
     "isort",
     "mypy",
     "pytest",
-    "asynctest;python_version<'3.8'",
 ]
 
 [tool.hatch.envs.lint.scripts]
@@ -126,7 +125,7 @@ lint = [
     "flake8 --max-line-length=88 --ignore=E203,W503,B950 --select=E,W,F,C9,N8,B,B9,C4 {args:aio_rom tests}",
     "bandit -r {args:aio_rom}",
 ]
-typing = "mypy --install-types --non-interactive --strict {args:.}"
+typing = "mypy --install-types --ignore-missing-imports --non-interactive --strict {args:.}"
 all = [
     "style",
     "lint",
