@@ -226,8 +226,8 @@ class RedisSet(RedisCollection[T], MutableSet[T]):
 
 
 class RedisList(RedisCollection[T], UserList):  # type: ignore[type-arg]
-    @property
-    def values(self) -> List[T]:
+    @property  # type: ignore[override]
+    def values(self) -> List[T] | None:
         return self.data
 
     @values.setter
