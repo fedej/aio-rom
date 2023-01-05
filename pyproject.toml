@@ -84,7 +84,7 @@ deps =
     pytest
     pytest-asyncio
     pytest-benchmark
-passenv = CI BENCHMARK
+passenv = CI,BENCHMARK
 commands = pytest
 
 [testenv:coverage]
