@@ -23,7 +23,7 @@ flake8==6.0.0
     #   aio-rom (pyproject.toml)
     #   flake8-bugbear
     #   flake8-comprehensions
-flake8-bugbear==22.12.6
+flake8-bugbear==23.3.23
     # via aio-rom (pyproject.toml)
 flake8-comprehensions==3.10.1
     # via aio-rom (pyproject.toml)
