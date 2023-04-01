@@ -8,7 +8,7 @@ async-timeout==4.0.2
     # via redis
 packaging==22.0
     # via redis
-redis==4.3.5
+redis==4.5.4
     # via aio-rom (pyproject.toml)
 typing-extensions==4.4.0
     # via aio-rom (pyproject.toml)
