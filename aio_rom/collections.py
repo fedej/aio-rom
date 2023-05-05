@@ -39,7 +39,6 @@ class GenericCollection:
         params: type[Any] | tuple[type[Any], ...],
         **kwargs: Any,
     ) -> type[GenericCollectionT]:
-
         cached = _generic_types_cache.get((cls, params))
         if cached is not None:
             return cached
