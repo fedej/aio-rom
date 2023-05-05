@@ -75,7 +75,7 @@ def type_fields(obj: type) -> dict[str, Field]:
                 origin = value.__args__[0]
                 args: tuple[type, ...] = ()
             else:
-                origin = get_origin(value.__args__[0])  # type: ignore[assignment]
+                origin = get_origin(value.__args__[0])
                 args = get_args(value.__args__[0])
             metadata: Metadata | None = next(
                 filter(
@@ -94,7 +94,7 @@ def type_fields(obj: type) -> dict[str, Field]:
                     eager=metadata.eager,
                 )
         else:
-            origin = get_origin(value)  # type: ignore[assignment]
+            origin = get_origin(value)
             if origin is not ClassVar:  # type: ignore
                 args = get_args(value)
                 fields_dict[name] = Field(name, origin, args)
@@ -116,7 +116,7 @@ def serialize(value: Serializable) -> RedisValue:
         return serialize(value.id)
     if value is None:
         return None
-    raise TypeError(f"Serialization of '{type(value)}' not supported")
+    raise TypeError(f"Serialization of {type(value)!r} not supported")
 
 
 @type_dispatch
