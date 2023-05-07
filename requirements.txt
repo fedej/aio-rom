@@ -10,5 +10,5 @@ redis==4.5.4
     # via aio-rom (pyproject.toml)
 typing-extensions==4.4.0
     # via aio-rom (pyproject.toml)
-wrapt==1.14.1
+wrapt==1.15.0
     # via aio-rom (pyproject.toml)
