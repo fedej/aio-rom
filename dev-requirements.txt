@@ -78,7 +78,7 @@ pyyaml==6.0
     # via bandit
 redis==4.5.4
     # via aio-rom (pyproject.toml)
-rich==13.3.5
+rich==13.4.2
     # via bandit
 smmap==5.0.0
     # via gitdb
