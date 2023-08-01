@@ -89,7 +89,7 @@ tomli==2.0.1
     #   black
     #   mypy
     #   pytest
-typing-extensions==4.5.0
+typing-extensions==4.7.1
     # via
     #   aio-rom (pyproject.toml)
     #   black
