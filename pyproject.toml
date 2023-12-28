@@ -5,7 +5,7 @@ description = "asyncio based Redis object mapper"
 authors = [{ name = "fedej", email = "fede_654_87@hotmail.com" }]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: AsyncIO",
@@ -76,19 +76,18 @@ asyncio_mode = "auto"
 
 [tool.hatch.envs.default]
 dependencies = [
-    "asynctest;python_version<'3.8'",
     "pytest",
     "pytest-asyncio",
     "pytest-benchmark",
     "pytest-cov",
 ]
 
-[tool.hatch.envs.default.scripts]
+[tool.hatch.envs.test.scripts]
 no-cov = "pytest --no-cov {args:tests}"
 cov = "pytest --cov --cov-report=term-missing --cov-config=pyproject.toml {args:tests}"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.7", "3.8", "3.9", "3.10", "3.11", "pypy3"]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12", "pypy3"]
 
 [tool.hatch.envs.coverage]
 detached = true

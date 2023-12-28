@@ -2,6 +2,7 @@ import dataclasses
 import typing
 from dataclasses import field
 from typing import Optional
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from redis.asyncio.client import Pipeline, Redis
@@ -9,8 +10,6 @@ from redis.asyncio.client import Pipeline, Redis
 from aio_rom import DataclassModel as Model
 from aio_rom.collections import RedisSet
 from aio_rom.exception import ModelNotFoundException
-
-from . import CoroutineMock, MagicMock, patch
 
 
 @dataclasses.dataclass
@@ -25,12 +24,12 @@ class ForTesting(Model):
 def mock_redis_transaction() -> typing.Iterator[MagicMock]:
     with patch("aio_rom.model.transaction") as tr:
         transaction = MagicMock(autospec=Pipeline)
-        transaction.execute = CoroutineMock()
-        transaction.delete = CoroutineMock()
-        transaction.srem = CoroutineMock()
-        transaction.sadd = CoroutineMock()
-        transaction.hset = CoroutineMock()
-        transaction.hdel = CoroutineMock()
+        transaction.execute = AsyncMock()
+        transaction.delete = AsyncMock()
+        transaction.srem = AsyncMock()
+        transaction.sadd = AsyncMock()
+        transaction.hset = AsyncMock()
+        transaction.hdel = AsyncMock()
         tr.return_value.__aenter__.return_value = transaction
         yield transaction
 
@@ -67,7 +66,7 @@ async def test_update(mock_redis_transaction: MagicMock) -> None:
 
 
 async def test_get(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.hgetall.side_effect = CoroutineMock(
+    mock_redis_client.hgetall.side_effect = AsyncMock(
         return_value={"id": "123", "f1": "123"}
     )
     value = await ForTesting.get("123")
@@ -77,13 +76,13 @@ async def test_get(mock_redis_client: MagicMock) -> None:
 
 
 async def test_failed_get(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.hgetall.side_effect = CoroutineMock(return_value=None)
+    mock_redis_client.hgetall.side_effect = AsyncMock(return_value=None)
     with pytest.raises(ModelNotFoundException):
         await ForTesting.get("123")
 
 
 async def test_scan(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.hgetall.side_effect = CoroutineMock(
+    mock_redis_client.hgetall.side_effect = AsyncMock(
         side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
     )
     keys = MagicMock()
@@ -98,8 +97,8 @@ async def test_scan(mock_redis_client: MagicMock) -> None:
 
 
 async def test_all(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.smembers = CoroutineMock(return_value=["123", "124"])
-    mock_redis_client.hgetall.side_effect = CoroutineMock(
+    mock_redis_client.smembers = AsyncMock(return_value=["123", "124"])
+    mock_redis_client.hgetall.side_effect = AsyncMock(
         side_effect=[{"id": "123", "f1": "123"}, {"id": "124", "f1": "123"}]
     )
     items = 0
@@ -111,14 +110,14 @@ async def test_all(mock_redis_client: MagicMock) -> None:
 
 
 async def test_count(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.scard.side_effect = CoroutineMock(return_value=10)
+    mock_redis_client.scard.side_effect = AsyncMock(return_value=10)
     assert 10 == await ForTesting.total_count()
 
 
 async def test_delete(
     mock_redis_client: MagicMock, mock_redis_transaction: MagicMock
 ) -> None:
-    mock_redis_client.keys.side_effect = CoroutineMock(
+    mock_redis_client.keys.side_effect = AsyncMock(
         return_value=["fortesting:123:reference"]
     )
     await ForTesting("123", 987).delete()
@@ -129,15 +128,15 @@ async def test_delete(
 
 
 async def test_delete_all(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.keys.side_effect = CoroutineMock(return_value=["fortesting:1"])
-    delete = CoroutineMock()
+    mock_redis_client.keys.side_effect = AsyncMock(return_value=["fortesting:1"])
+    delete = AsyncMock()
     mock_redis_client.delete.side_effect = delete
     await ForTesting.delete_all()
     delete.assert_called_with("fortesting", "fortesting:1")
 
 
 async def test_exists(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.exists.side_effect = CoroutineMock(
+    mock_redis_client.exists.side_effect = AsyncMock(
         side_effect=[True, False, True, False]
     )
     assert await ForTesting.persisted(1)
@@ -147,7 +146,7 @@ async def test_exists(mock_redis_client: MagicMock) -> None:
 
 
 async def test_refresh(mock_redis_client: MagicMock) -> None:
-    mock_redis_client.hgetall.side_effect = CoroutineMock(
+    mock_redis_client.hgetall.side_effect = AsyncMock(
         return_value={"id": "123", "f1": "124"}
     )
     value = ForTesting("123", 123)
