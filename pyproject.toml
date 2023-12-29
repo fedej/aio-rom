@@ -87,7 +87,7 @@ no-cov = "pytest --no-cov {args:tests}"
 cov = "pytest --cov --cov-report=term-missing --cov-config=pyproject.toml {args:tests}"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.8", "3.9", "3.10", "3.11", "3.12", "pypy3"]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12", "pypy3.8", "pypy3.9", "pypy3.10"]
 
 [tool.hatch.envs.coverage]
 detached = true
