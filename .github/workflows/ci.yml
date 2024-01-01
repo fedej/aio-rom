@@ -46,7 +46,7 @@ jobs:
 
       - if: "!startsWith(matrix.python-version, 'pypy')"
         name: Upload coverage data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-data
           path: .coverage.*
@@ -83,7 +83,7 @@ jobs:
         run: |
           hatch run coverage:report-xml
       - name: Upload coverage.xml
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rom-coverage
           path: coverage.xml
