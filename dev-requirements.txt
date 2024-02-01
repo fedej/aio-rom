@@ -16,7 +16,7 @@ click==8.1.7
     # via black
 exceptiongroup==1.2.0
     # via pytest
-flake8==6.1.0
+flake8==7.0.0
     # via
     #   aio-rom (pyproject.toml)
     #   flake8-bugbear
