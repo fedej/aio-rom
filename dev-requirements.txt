@@ -70,7 +70,7 @@ pytest==7.4.3
     #   aio-rom (pyproject.toml)
     #   pytest-asyncio
     #   pytest-benchmark
-pytest-asyncio==0.23.3
+pytest-asyncio==0.23.4
     # via aio-rom (pyproject.toml)
 pytest-benchmark==4.0.0
     # via aio-rom (pyproject.toml)
