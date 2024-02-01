@@ -61,7 +61,7 @@ py-cpuinfo==9.0.0
     # via pytest-benchmark
 pycodestyle==2.11.1
     # via flake8
-pyflakes==3.1.0
+pyflakes==3.2.0
     # via flake8
 pygments==2.17.2
     # via rich
