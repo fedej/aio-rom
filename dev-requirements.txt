@@ -10,7 +10,7 @@ attrs==23.2.0
     # via flake8-bugbear
 bandit==1.7.6
     # via aio-rom (pyproject.toml)
-black==23.12.1
+black==24.3.0
     # via aio-rom (pyproject.toml)
 click==8.1.7
     # via black
